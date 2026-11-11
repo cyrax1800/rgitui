@@ -547,12 +547,27 @@ impl Render for Workspace {
             if let Some(details) = failed.details.as_ref() {
                 status_bar = status_bar.operation_details(details.translated().to_string());
             }
+            // A pull stopped by uncommitted changes fails the same way however
+            // often it is retried, so offer the one retry that gets past them.
+            if failed
+                .pull
+                .is_some_and(|pull| pull.blocked_by_local_changes)
+            {
+                let retry = failed.clone();
+                let workspace = cx.entity();
+                status_bar = status_bar.on_pull_autostash(move |_, _, cx| {
+                    workspace.update(cx, |this, cx| {
+                        this.retry_git_operation(&retry, true, cx);
+                        cx.notify();
+                    });
+                });
+            }
             if failed.retryable {
                 let retry = failed.clone();
                 let workspace = cx.entity();
                 status_bar = status_bar.on_retry(move |_, _, cx| {
                     workspace.update(cx, |this, cx| {
-                        this.retry_git_operation(&retry, cx);
+                        this.retry_git_operation(&retry, false, cx);
                         cx.notify();
                     });
                 });

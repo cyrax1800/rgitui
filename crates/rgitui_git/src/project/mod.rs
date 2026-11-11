@@ -1,5 +1,6 @@
 mod argsafe;
 mod auth;
+mod autostash;
 mod bisect;
 mod blame;
 mod branch_switch;
@@ -600,8 +601,7 @@ impl GitProject {
         branch_name: Option<String>,
         cx: &mut Context<Self>,
     ) -> u64 {
-        let id = self.next_operation_id;
-        self.next_operation_id += 1;
+        let id = self.allocate_operation_id();
         self.refresh_caches.begin_operation();
         cx.emit(GitProjectEvent::OperationUpdated(GitOperationUpdate {
             id,
@@ -614,8 +614,17 @@ impl GitProject {
             worktree_path: None,
             retryable: false,
             failure_kind: None,
+            pull: None,
         }));
         cx.notify();
+        id
+    }
+
+    /// The id for an operation that is reported only once it has finished, so
+    /// it never shows as running.
+    pub(crate) fn allocate_operation_id(&mut self) -> u64 {
+        let id = self.next_operation_id;
+        self.next_operation_id += 1;
         id
     }
 
@@ -635,7 +644,7 @@ impl GitProject {
         }
     }
 
-    fn operation_worktree(&self, id: u64) -> Option<PathBuf> {
+    pub(crate) fn operation_worktree(&self, id: u64) -> Option<PathBuf> {
         self.operation_worktrees.get(&id).cloned()
     }
 
@@ -659,6 +668,7 @@ impl GitProject {
             worktree_path: self.operation_worktree(id),
             retryable: false,
             failure_kind: None,
+            pull: None,
         }));
     }
 
@@ -696,6 +706,7 @@ impl GitProject {
             worktree_path: self.operation_worktree(id),
             retryable: names.2,
             failure_kind,
+            pull: None,
         }));
     }
 

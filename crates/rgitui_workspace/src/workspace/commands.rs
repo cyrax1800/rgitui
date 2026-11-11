@@ -1,6 +1,7 @@
 use gpui::{BorrowAppContext, Context, Entity, Window};
 
 use crate::{CommandId, CommitPanelEvent, ConfirmAction, ToastKind};
+use rgitui_git::PullLocalChanges;
 
 use super::layout::{MAX_DETAIL_PANEL_WIDTH, MIN_DETAIL_PANEL_WIDTH};
 use super::{
@@ -467,10 +468,12 @@ impl Workspace {
                     ToastKind::Info,
                     cx,
                 );
+                let local_changes = Self::pull_local_changes_setting(cx);
                 for tab in &self.tabs {
                     let worktree_path = tab.effective_repo_path(cx);
                     tab.project.update(cx, |proj, cx| {
-                        proj.pull_default_at(&worktree_path, cx).detach();
+                        proj.pull_default_at(local_changes, &worktree_path, cx)
+                            .detach();
                     });
                 }
             }
@@ -547,12 +550,18 @@ impl Workspace {
                 });
             }
             CommandId::Pull => {
+                let local_changes = Self::pull_local_changes_setting(cx);
                 let worktree_path = tab.effective_repo_path(cx);
-                self.preview_pull(tab.project.clone(), worktree_path, false, cx);
+                self.preview_pull(tab.project.clone(), worktree_path, local_changes, cx);
             }
-            CommandId::PullWithAutoStash => {
+            CommandId::PullAutostash => {
                 let worktree_path = tab.effective_repo_path(cx);
-                self.preview_pull(tab.project.clone(), worktree_path, true, cx);
+                self.preview_pull(
+                    tab.project.clone(),
+                    worktree_path,
+                    PullLocalChanges::Autostash,
+                    cx,
+                );
             }
             CommandId::Push => {
                 let worktree_path = tab.effective_repo_path(cx);
@@ -1047,11 +1056,11 @@ impl Workspace {
         &mut self,
         project: Entity<rgitui_git::GitProject>,
         worktree_path: std::path::PathBuf,
-        auto_stash: bool,
+        local_changes: PullLocalChanges,
         cx: &mut Context<Self>,
     ) {
         let task = project.update(cx, |project, cx| {
-            project.preview_pull_at(&worktree_path, auto_stash, cx)
+            project.preview_pull_at(&worktree_path, local_changes, cx)
         });
         let dialog = self.dialogs.confirm_dialog.clone();
         let workspace = cx.entity().downgrade();

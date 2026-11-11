@@ -826,16 +826,10 @@ pub(super) fn subscribe_confirm_dialog(
                 let remote = preview.remote.clone();
                 let branch = preview.branch.clone();
                 let worktree_path = preview.worktree_path.clone();
-                let auto_stash = preview.auto_stash;
+                let local_changes = preview.local_changes;
                 project.update(cx, |project, cx| {
                     project
-                        .pull_from_with_auto_stash_at(
-                            &remote,
-                            &branch,
-                            &worktree_path,
-                            auto_stash,
-                            cx,
-                        )
+                        .pull_from_at(&remote, &branch, local_changes, &worktree_path, cx)
                         .detach();
                 });
             }
@@ -2095,9 +2089,11 @@ pub(super) fn subscribe_sidebar(
             }
             SidebarEvent::RemotePull(name) => {
                 let name = name.clone();
+                let local_changes = Workspace::pull_local_changes_setting(cx);
                 let worktree_path = this.effective_worktree_path(cx);
                 project.update(cx, |proj, cx| {
-                    proj.pull_at(&name, &worktree_path, cx).detach();
+                    proj.pull_at(&name, local_changes, &worktree_path, cx)
+                        .detach();
                 });
             }
             SidebarEvent::RemotePush(name) => {
@@ -2114,8 +2110,9 @@ pub(super) fn subscribe_sidebar(
                     .remote_branch_parts_at(&worktree_path, name)
                 {
                     Ok((remote, branch)) => {
+                        let local_changes = Workspace::pull_local_changes_setting(cx);
                         project.update(cx, |proj, cx| {
-                            proj.pull_from_at(&remote, &branch, &worktree_path, cx)
+                            proj.pull_from_at(&remote, &branch, local_changes, &worktree_path, cx)
                                 .detach();
                         });
                     }
@@ -3842,9 +3839,11 @@ pub(super) fn subscribe_toolbar(
                 });
             }
             ToolbarEvent::Pull => {
+                let local_changes = Workspace::pull_local_changes_setting(cx);
                 let worktree_path = this.effective_worktree_path(cx);
                 _project.update(cx, |proj, cx| {
-                    proj.pull_default_at(&worktree_path, cx).detach();
+                    proj.pull_default_at(local_changes, &worktree_path, cx)
+                        .detach();
                 });
             }
             ToolbarEvent::Push => {

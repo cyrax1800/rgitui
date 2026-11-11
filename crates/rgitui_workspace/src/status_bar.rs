@@ -1,9 +1,11 @@
 use gpui::prelude::*;
 use gpui::{div, px, App, ClickEvent, SharedString, Window};
-use std::rc::Rc;
 use rgitui_i18n::t;
 use rgitui_theme::{ActiveTheme, Color, StyledExt};
-use rgitui_ui::{Button, ButtonSize, ButtonStyle, Icon, IconName, IconSize, Label, LabelSize, Tooltip};
+use rgitui_ui::{
+    Button, ButtonSize, ButtonStyle, Icon, IconName, IconSize, Label, LabelSize, Tooltip,
+};
+use std::rc::Rc;
 
 /// The bottom status bar.
 #[derive(IntoElement)]
@@ -17,6 +19,7 @@ pub struct StatusBar {
     operation_message: Option<String>,
     operation_details: Option<String>,
     on_retry: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+    on_pull_autostash: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     is_loading: bool,
     is_error: bool,
     head_detached: bool,
@@ -42,6 +45,7 @@ impl StatusBar {
             operation_message: None,
             operation_details: None,
             on_retry: None,
+            on_pull_autostash: None,
             is_loading: false,
             is_error: false,
             head_detached: false,
@@ -92,6 +96,16 @@ impl StatusBar {
         callback: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_retry = Some(Rc::new(callback));
+        self
+    }
+
+    /// Offer pulling again with autostash, for a pull that uncommitted changes
+    /// stopped. Retrying it unchanged would fail the same way.
+    pub fn on_pull_autostash(
+        mut self,
+        callback: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_pull_autostash = Some(Rc::new(callback));
         self
     }
 
@@ -252,6 +266,18 @@ impl StatusBar {
                 msg_row = msg_row.tooltip(Tooltip::text(details.clone()));
             }
             left = left.child(msg_row);
+            if let Some(pull_autostash) = &self.on_pull_autostash {
+                let pull_autostash = Rc::clone(pull_autostash);
+                left = left.child(
+                    Button::new(
+                        "status-operation-pull-autostash",
+                        t!("common.pull_autostash"),
+                    )
+                    .size(ButtonSize::Compact)
+                    .style(ButtonStyle::Filled)
+                    .on_click(move |event, window, cx| pull_autostash(event, window, cx)),
+                );
+            }
             if let Some(retry) = &self.on_retry {
                 let retry = Rc::clone(retry);
                 left = left.child(
