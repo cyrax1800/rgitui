@@ -179,7 +179,7 @@ fn head_branch_name(repo: &Repository) -> Result<String> {
     }
     head.shorthand()
         .map(str::to_string)
-        .ok_or_else(|| error(msg!("git.error.branch_name_unknown")))
+        .map_err(|_| error(msg!("git.error.branch_name_unknown")))
 }
 
 /// Whether the working tree or index carries changes to **tracked** files.
@@ -231,14 +231,17 @@ fn default_remote_name(repo: &Repository) -> Result<String> {
         return Err(error(msg!("git.error.no_remotes")));
     }
 
-    if remote_names.iter().flatten().any(|name| name == "origin") {
+    if remote_names
+        .iter()
+        .filter_map(|name| name.ok().flatten())
+        .any(|name| name == "origin")
+    {
         return Ok("origin".to_string());
     }
 
     let name = remote_names
         .iter()
-        .flatten()
-        .next()
+        .find_map(|name| name.ok().flatten())
         .map(str::to_string)
         .ok_or_else(|| error(msg!("git.error.no_usable_remotes")))?;
     // Read straight out of .git/config, which git does not validate.
@@ -313,7 +316,7 @@ fn remote_tracking_branch_parts(repo: &Repository, name: &str) -> Result<(String
     let mut remotes = repo
         .remotes()?
         .iter()
-        .flatten()
+        .filter_map(|name| name.ok().flatten())
         .map(str::to_owned)
         .collect::<Vec<_>>();
     remotes.sort_by_key(|remote| std::cmp::Reverse(remote.len()));

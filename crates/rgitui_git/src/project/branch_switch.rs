@@ -137,7 +137,7 @@ fn switch_branch_locked(
             // 切换失败只能在原分支恢复原修改，绝不强制检出或丢弃文件。
             let current = repo.head()?;
             anyhow::ensure!(
-                current.name() == Some(source_ref.as_str()),
+                current.name().ok() == Some(source_ref.as_str()),
                 error(msg!("git.checkout_branch.changed"))
             );
             drop(current);
@@ -275,7 +275,7 @@ mod tests {
         )
         .unwrap();
         assert!(tracking);
-        assert_eq!(repo.head().unwrap().shorthand(), Some("topic"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("topic"));
         assert_eq!(
             repo.find_branch("topic", git2::BranchType::Local)
                 .unwrap()
@@ -301,7 +301,7 @@ mod tests {
         switch_branch(&mut repo, "source", BranchSwitchMode::RequireClean, None).unwrap();
         fixture.write_file("tracked.txt", "unfinished\n");
         assert!(switch_branch(&mut repo, "main", BranchSwitchMode::BringChanges, None).is_err());
-        assert_eq!(repo.head().unwrap().shorthand(), Some("source"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("source"));
         assert_eq!(
             std::fs::read_to_string(fixture.path().join("tracked.txt")).unwrap(),
             "unfinished\n"
@@ -326,7 +326,7 @@ mod tests {
         fixture.write_file("tracked.txt", "unfinished\n");
         let mut repo = Repository::open(fixture.path()).unwrap();
         assert!(switch_branch(&mut repo, "feature", BranchSwitchMode::LeaveChanges, None).is_err());
-        assert_eq!(repo.head().unwrap().shorthand(), Some("main"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("main"));
         assert_eq!(
             std::fs::read_to_string(fixture.path().join("tracked.txt")).unwrap(),
             "unfinished\n"
@@ -358,7 +358,7 @@ mod tests {
             std::fs::read_to_string(fixture.path().join("tracked.txt")).unwrap(),
             "unfinished\n"
         );
-        assert_eq!(repo.head().unwrap().shorthand(), Some("main"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("main"));
         assert!(
             saved_oid(&repo, &saved_ref(&repo, "refs/heads/main").unwrap())
                 .unwrap()
@@ -380,7 +380,7 @@ mod tests {
         repo.reference("refs/heads/main", changed, true, "simulate other checkout")
             .unwrap();
         assert!(switch_branch(&mut repo, "main", BranchSwitchMode::RequireClean, None).is_err());
-        assert_eq!(repo.head().unwrap().shorthand(), Some("main"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("main"));
         assert_eq!(saved_oid(&repo, &saved).unwrap(), Some(stash));
         let mut found = false;
         repo.stash_foreach(|_, _, oid| {
@@ -420,7 +420,7 @@ mod tests {
         fixture.write_file("new.txt", "untracked\n");
         let mut repo = Repository::open(fixture.path()).unwrap();
         switch_branch(&mut repo, "feature", BranchSwitchMode::BringChanges, None).unwrap();
-        assert_eq!(repo.head().unwrap().shorthand(), Some("feature"));
+        assert_eq!(repo.head().unwrap().shorthand().ok(), Some("feature"));
         assert_eq!(
             std::fs::read_to_string(fixture.path().join("tracked.txt")).unwrap(),
             "staged and unstaged\n"

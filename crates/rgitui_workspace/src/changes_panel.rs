@@ -1226,19 +1226,20 @@ impl Render for ChangesPanel {
                             .on_click(
                                 move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
                                     let modifiers = event.modifiers();
+                                    let secondary = modifiers.secondary(cx);
                                     weak_panel
                                         .update(cx, |this, cx| {
                                             this.select_visible_path(
                                                 &row_click_path,
                                                 row_number,
                                                 modifiers.shift,
-                                                modifiers.secondary(),
+                                                secondary,
                                                 cx,
                                             );
                                             this.focus_handle.focus(window, cx);
                                         })
                                         .ok();
-                                    if !modifiers.shift && !modifiers.secondary() {
+                                    if !modifiers.shift && !secondary {
                                         sidebar_select
                                             .update(cx, |_, cx| cx.emit(select_action.clone()))
                                             .ok();
@@ -1373,7 +1374,7 @@ impl Render for ChangesPanel {
                     return;
                 }
                 let modifiers = event.keystroke.modifiers;
-                if modifiers.secondary() {
+                if modifiers.secondary(cx) {
                     if event.keystroke.key == "a" {
                         this.select_all_visible(cx);
                     } else {

@@ -78,7 +78,7 @@ fn pull_preview_from_repo(
     let statuses = repo.statuses(Some(&mut options))?;
     let local_paths = statuses
         .iter()
-        .filter_map(|entry| entry.path().map(std::path::PathBuf::from))
+        .filter_map(|entry| entry.path().ok().map(std::path::PathBuf::from))
         .collect::<std::collections::HashSet<_>>();
     let local_changes = !local_paths.is_empty();
     let remote_ref = format!("refs/remotes/{remote}/{branch}");
@@ -271,7 +271,9 @@ fn push_with_auto_pull(
                 let configured_remote = repo.find_remote(remote)?;
                 configured_remote
                     .pushurl()
-                    .is_some_and(|url| Some(url) != configured_remote.url())
+                    .ok()
+                    .flatten()
+                    .is_some_and(|url| Some(url) != configured_remote.url().ok())
             };
             if push_url_differs {
                 anyhow::bail!(

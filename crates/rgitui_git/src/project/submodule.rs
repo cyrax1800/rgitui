@@ -182,8 +182,8 @@ pub fn compute_submodules(repo: &Repository) -> Result<Vec<SubmoduleInfo>> {
     for submodule in submodules {
         let name = submodule.name().unwrap_or("unknown").to_string();
         let path = submodule.path().to_path_buf();
-        let url = submodule.url().unwrap_or("").to_string();
-        let branch = submodule.branch().map(str::to_string);
+        let url = submodule.url().ok().flatten().unwrap_or("").to_string();
+        let branch = submodule.branch().ok().flatten().map(str::to_string);
 
         let head_oid = submodule.head_id().map(|oid| oid.to_string());
         let index_oid = submodule.index_id().map(|oid| oid.to_string());
@@ -215,7 +215,10 @@ pub fn submodule_init(repo: &Repository, name: &str) -> Result<()> {
         .context("Failed to enumerate submodules")?;
 
     for mut submodule in submodules {
-        if submodule.name() == Some(name) {
+        if submodule
+            .name()
+            .is_ok_and(|submodule_name| submodule_name == name)
+        {
             submodule
                 .init(false)
                 .context("Failed to initialize submodule")?;
@@ -235,7 +238,7 @@ pub fn submodule_update(repo: &Repository, name: &str, init: bool) -> Result<()>
 
     let path = submodules
         .iter()
-        .find(|submodule| submodule.name() == Some(name))
+        .find(|submodule| submodule.name().is_ok_and(|submodule_name| submodule_name == name))
         .map(|submodule| submodule.path().to_path_buf())
         .ok_or_else(|| anyhow::anyhow!("Submodule '{}' not found", name))?;
     let workdir = repo

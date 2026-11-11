@@ -588,7 +588,7 @@ mod tests {
                     repo_path: "repo".into(),
                     worktree_path: "repo".into(),
                     source: "dev".into(),
-                    source_oid: git2::Oid::zero(),
+                    source_oid: git2::Oid::ZERO_SHA1,
                     target: "release".into(),
                     bring_changes: false,
                 },
