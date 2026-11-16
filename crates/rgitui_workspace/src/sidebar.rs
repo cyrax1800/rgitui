@@ -159,6 +159,7 @@ enum SidebarItem {
     SectionHeader(SidebarSection),
     LocalBranch(usize),  // index into local branches
     Remote(usize),       // index into remotes
+    RemoteBranchGroup(String),
     RemoteBranch(usize), // index into remote branches
     Tag(usize),          // index into tags
     Stash(usize),        // index into stashes
@@ -168,6 +169,55 @@ enum SidebarItem {
     StagedDir(String),   // collapsed_dirs key for a staged directory row
     UnstagedFile(usize), // index into unstaged files
     UnstagedDir(String), // collapsed_dirs key for an unstaged directory row
+}
+
+/// 远端地址卡片包含名称操作行与地址行，不能按普通分支的一行高度计算。
+fn remote_row_height(item_h: f32) -> f32 {
+    item_h * 2.0 + 8.0
+}
+
+/// 优先匹配已配置远端的最长名称，避免带斜杠的远端名被错误拆分。
+fn remote_branch_group<'a>(name: &'a str, remotes: &[RemoteInfo]) -> &'a str {
+    let prefix_len = remotes
+        .iter()
+        .filter(|remote| {
+            name.strip_prefix(remote.name.as_str())
+                .is_some_and(|suffix| suffix.starts_with('/'))
+        })
+        .map(|remote| remote.name.len())
+        .max();
+    match prefix_len {
+        Some(len) => &name[..len],
+        None => name.split_once('/').map_or(name, |(remote, _)| remote),
+    }
+}
+
+/// 缓存可见树行；筛选后保留父节点，折叠只影响显示，不改变分支的原始索引。
+fn remote_branch_tree(
+    branches: &[BranchInfo],
+    visible: &[usize],
+    remotes: &[RemoteInfo],
+    collapsed: &HashSet<String>,
+) -> Vec<SidebarItem> {
+    let mut groups: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for &index in visible {
+        let group = remote_branch_group(&branches[index].name, remotes);
+        groups.entry(group).or_default().push(index);
+    }
+    let mut rows = Vec::with_capacity(visible.len() + groups.len());
+    let mut append = |name: &str, indices: Vec<usize>| {
+        rows.push(SidebarItem::RemoteBranchGroup(name.to_string()));
+        if !collapsed.contains(name) {
+            rows.extend(indices.into_iter().map(SidebarItem::RemoteBranch));
+        }
+    };
+    if let Some(indices) = groups.remove("origin") {
+        append("origin", indices);
+    }
+    for (name, indices) in groups {
+        append(name, indices);
+    }
+    rows
 }
 
 /// State for the right-click stash context menu.
@@ -446,6 +496,9 @@ pub struct Sidebar {
     flattened_local_branches: Vec<usize>, // indices into self.local_branches
     /// Flattened remote branches for virtualized `uniform_list` rendering.
     flattened_remote_branches: Vec<usize>, // indices into self.remote_branches
+    /// 远端分支树的可见行，包含远端分组和未折叠的分支。
+    flattened_remote_tree: Vec<SidebarItem>,
+    collapsed_remote_groups: HashSet<String>,
     /// Flattened tags for virtualized `uniform_list` rendering.
     flattened_tags: Vec<usize>, // indices into self.tags
     /// Flattened stashes for virtualized `uniform_list` rendering.
@@ -633,6 +686,8 @@ impl Sidebar {
             flattened_unstaged: Vec::new(),
             flattened_local_branches: Vec::new(),
             flattened_remote_branches: Vec::new(),
+            flattened_remote_tree: Vec::new(),
+            collapsed_remote_groups: HashSet::new(),
             flattened_tags: Vec::new(),
             flattened_stashes: Vec::new(),
             flattened_worktrees: Vec::new(),
@@ -820,9 +875,7 @@ impl Sidebar {
 
         items.push(SidebarItem::SectionHeader(SidebarSection::RemoteBranches));
         if is_expanded(SidebarSection::RemoteBranches, &self.expanded_sections) {
-            for &i in &self.flattened_remote_branches {
-                items.push(SidebarItem::RemoteBranch(i));
-            }
+            items.extend(self.flattened_remote_tree.iter().cloned());
         }
 
         items.push(SidebarItem::SectionHeader(SidebarSection::Tags));
@@ -958,6 +1011,9 @@ impl Sidebar {
                 if let Some(branch) = self.remote_branches.get(i) {
                     cx.emit(SidebarEvent::BranchCheckout(branch.name.clone()));
                 }
+            }
+            SidebarItem::RemoteBranchGroup(name) => {
+                self.toggle_remote_group(name, cx);
             }
             SidebarItem::Tag(i) => {
                 if let Some(tag) = self.tags.get(i) {
@@ -1172,6 +1228,31 @@ impl Sidebar {
         self.flattened_remote_branches.clear();
         self.flattened_remote_branches
             .extend(self.filtered_remote_indices());
+        self.rebuild_remote_tree();
+    }
+
+    fn rebuild_remote_tree(&mut self) {
+        self.flattened_remote_tree = remote_branch_tree(
+            &self.remote_branches,
+            &self.flattened_remote_branches,
+            &self.remotes,
+            &self.collapsed_remote_groups,
+        );
+    }
+
+    fn toggle_remote_group(&mut self, name: String, cx: &mut Context<Self>) {
+        if !self.collapsed_remote_groups.remove(&name) {
+            self.collapsed_remote_groups.insert(name.clone());
+        }
+        self.rebuild_remote_tree();
+        self.rebuild_nav_items();
+        // 折叠隐藏子节点后，键盘焦点回到该分组，避免落到另一节的行上。
+        if self.keyboard_index.is_some() {
+            self.keyboard_index = self.cached_nav_items.iter().position(|item| {
+                matches!(item, SidebarItem::RemoteBranchGroup(group) if group == &name)
+            });
+        }
+        cx.notify();
     }
 
     pub fn update_branches(&mut self, branches: Vec<BranchInfo>, cx: &mut Context<Self>) {
@@ -1227,16 +1308,23 @@ impl Sidebar {
         cx.notify();
     }
 
-    pub fn update_remotes(&mut self, remotes: Vec<RemoteInfo>, cx: &mut Context<Self>) {
+    pub fn update_remotes(&mut self, mut remotes: Vec<RemoteInfo>, cx: &mut Context<Self>) {
+        // 展示优先 origin；仅调整界面顺序，不改写 Git 的推送或上游配置。
+        remotes.sort_by(|a, b| {
+            (a.name != "origin")
+                .cmp(&(b.name != "origin"))
+                .then_with(|| a.name.cmp(&b.name))
+        });
         if self.remotes == remotes {
             return;
         }
         self.remotes = remotes;
-        self.rebuild_nav_items();
 
         // Rebuild flattened remotes for virtualized rendering.
         self.flattened_remotes.clear();
         self.flattened_remotes.extend(0..self.remotes.len());
+        self.rebuild_remote_tree();
+        self.rebuild_nav_items();
 
         cx.notify();
     }
@@ -1865,7 +1953,12 @@ impl Sidebar {
                 return 0.0;
             }
             let visible = section_row_cap(section, compactness).map_or(count, |cap| count.min(cap));
-            visible as f32 * item_h
+            let row_h = if section == SidebarSection::Remotes {
+                remote_row_height(item_h)
+            } else {
+                item_h
+            };
+            visible as f32 * row_h
         };
 
         let desired = [
@@ -1876,7 +1969,7 @@ impl Sidebar {
             rows(SidebarSection::Remotes, self.flattened_remotes.len()),
             rows(
                 SidebarSection::RemoteBranches,
-                self.flattened_remote_branches.len(),
+                self.flattened_remote_tree.len(),
             ),
             rows(SidebarSection::Tags, self.flattened_tags.len()),
             rows(SidebarSection::Stashes, self.stashes.len()),
@@ -2631,8 +2724,7 @@ impl Render for Sidebar {
                             );
                         }
 
-                        // All branches: Copy name button (HEAD + non-HEAD).
-                        // Non-HEAD branches also get: Checkout, Merge, Rename, Delete.
+                        // 行内保留复制、切换和重命名；合并与删除通过右键菜单操作。
                         {
                             let w_cp = w.clone();
                             let bn_cp = name.clone();
@@ -2658,12 +2750,8 @@ impl Render for Sidebar {
                             if !is_head {
                                 let w_co = w.clone();
                                 let bn_co = name.clone();
-                                let w_mg = w.clone();
-                                let bn_mg = name.clone();
                                 let w_rn = w.clone();
                                 let bn_rn = name.clone();
-                                let w_dl = w.clone();
-                                let bn_dl = name.clone();
                                 actions = actions
                                     .child(
                                         IconButton::new(
@@ -2681,20 +2769,6 @@ impl Render for Sidebar {
                                     )
                                     .child(
                                         IconButton::new(
-                                            ElementId::NamedInteger("merge-branch".into(), i as u64),
-                                            IconName::GitMerge,
-                                        )
-                                        .size(ButtonSize::Compact)
-                                        .color(Color::Muted)
-                                        .tooltip(t!("sidebar.merge_branch.tooltip"))
-                                        .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                                            let _ = w_mg.clone().update(cx, |_this, cx| {
-                                                cx.emit(SidebarEvent::MergeBranch(bn_mg.to_string()));
-                                            });
-                                        }),
-                                    )
-                                    .child(
-                                        IconButton::new(
                                             ElementId::NamedInteger("rename-branch".into(), i as u64),
                                             IconName::Edit,
                                         )
@@ -2704,20 +2778,6 @@ impl Render for Sidebar {
                                         .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                                             let _ = w_rn.clone().update(cx, |_this, cx| {
                                                 cx.emit(SidebarEvent::BranchRename(bn_rn.to_string()));
-                                            });
-                                        }),
-                                    )
-                                    .child(
-                                        IconButton::new(
-                                            ElementId::NamedInteger("delete-branch".into(), i as u64),
-                                            IconName::Trash,
-                                        )
-                                        .size(ButtonSize::Compact)
-                                        .color(Color::Deleted)
-                                        .tooltip(t!("sidebar.delete_branch.tooltip"))
-                                        .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                                            let _ = w_dl.clone().update(cx, |_this, cx| {
-                                                cx.emit(SidebarEvent::BranchDelete(bn_dl.to_string()));
                                             });
                                         }),
                                     );
@@ -2839,220 +2899,231 @@ impl Render for Sidebar {
             } else {
                 let flattened = self.flattened_remotes.clone();
                 let list_height = list_heights.remotes;
+                let remote_h = remote_row_height(item_h);
+                let show_remotes_scrollbar = flattened.len() as f32 * remote_h > list_height + 0.5;
                 let nav_base = nav_idx;
                 nav_idx += flattened.len();
                 let remotes_list = self.remotes.clone();
                 let colors = colors.clone();
                 let w = sidebar_weak.clone();
 
-                content = content.child(
-                    uniform_list(
-                        "remotes-list",
-                        flattened.len(),
-                        move |range: Range<usize>, _window: &mut Window, _cx: &mut App| {
-                            let w = w.clone();
-                            range
-                                .map(|i| {
-                                    let remote = &remotes_list[flattened[i]];
-                                    let kb_active = keyboard_index == Some(nav_base + i);
-                                    let remote_name: SharedString = remote.name.clone().into();
-                                    let url_text = remote
-                                        .url
-                                        .as_deref()
-                                        .or(remote.push_url.as_deref())
-                                        .unwrap_or("No URL configured")
-                                        .to_string();
-                                    let fetch_remote = remote_name.clone();
-                                    let pull_remote = remote_name.clone();
-                                    let push_remote = remote_name.clone();
-                                    let edit_remote = remote_name.clone();
-                                    let edit_url = remote
-                                        .url
-                                        .as_deref()
-                                        .or(remote.push_url.as_deref())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    let remove_remote = remote_name.clone();
-                                    let edit_is_default = remote.is_default;
-                                    let is_default = remote.is_default;
+                let list = uniform_list(
+                    "remotes-list",
+                    flattened.len(),
+                    move |range: Range<usize>, _window: &mut Window, _cx: &mut App| {
+                        let w = w.clone();
+                        range
+                            .map(|i| {
+                                let remote = &remotes_list[flattened[i]];
+                                let kb_active = keyboard_index == Some(nav_base + i);
+                                let remote_name: SharedString = remote.name.clone().into();
+                                let url_text = remote
+                                    .url
+                                    .as_deref()
+                                    .or(remote.push_url.as_deref())
+                                    .unwrap_or("No URL configured")
+                                    .to_string();
+                                let fetch_remote = remote_name.clone();
+                                let pull_remote = remote_name.clone();
+                                let push_remote = remote_name.clone();
+                                let edit_remote = remote_name.clone();
+                                let edit_url = remote
+                                    .url
+                                    .as_deref()
+                                    .or(remote.push_url.as_deref())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let remove_remote = remote_name.clone();
+                                let edit_is_default = remote.is_default;
+                                let is_default = remote.is_default;
 
-                                    let mut item = div()
-                                        .id(ElementId::NamedInteger("remote-item".into(), i as u64))
-                                        .v_flex()
+                                let mut item = div()
+                                    .id(ElementId::NamedInteger("remote-item".into(), i as u64))
+                                    .v_flex()
+                                    .w_full()
+                                    .h(px(remote_h))
+                                    .px_2()
+                                    .py_1()
+                                    .pl(px(16.))
+                                    .gap_1()
+                                    .when(kb_active, |el| {
+                                        el.bg(colors.ghost_element_hover)
+                                            .border_l_2()
+                                            .border_color(kb_accent)
+                                    })
+                                    .hover(|s| s.bg(colors.ghost_element_hover))
+                                    .active(|s| s.bg(colors.ghost_element_active));
+
+                                // Icon buttons: fetch, pull, push, remove
+                                let w_fetch = w.clone();
+                                let w_pull = w.clone();
+                                let w_push = w.clone();
+                                let w_edit = w.clone();
+                                let w_remove = w.clone();
+
+                                item = item.child(
+                                    div()
+                                        .h_flex()
                                         .w_full()
-                                        .px_2()
-                                        .py_1()
-                                        .pl(px(16.))
-                                        .gap_1()
-                                        .when(kb_active, |el| {
-                                            el.bg(colors.ghost_element_hover)
-                                                .border_l_2()
-                                                .border_color(kb_accent)
-                                        })
-                                        .hover(|s| s.bg(colors.ghost_element_hover))
-                                        .active(|s| s.bg(colors.ghost_element_active));
-
-                                    // Icon buttons: fetch, pull, push, remove
-                                    let w_fetch = w.clone();
-                                    let w_pull = w.clone();
-                                    let w_push = w.clone();
-                                    let w_edit = w.clone();
-                                    let w_remove = w.clone();
-
-                                    item = item.child(
-                                        div()
-                                            .h_flex()
-                                            .w_full()
-                                            .gap_2()
-                                            .items_center()
-                                            .overflow_hidden()
-                                            .child(
-                                                rgitui_ui::Icon::new(IconName::ExternalLink)
-                                                    .size(rgitui_ui::IconSize::XSmall)
-                                                    .color(Color::Info),
-                                            )
-                                            .child(
-                                                Label::new(remote_name.clone())
+                                        .h(px(item_h))
+                                        .flex_shrink_0()
+                                        .gap_2()
+                                        .items_center()
+                                        .overflow_hidden()
+                                        .child(
+                                            rgitui_ui::Icon::new(IconName::ExternalLink)
+                                                .size(rgitui_ui::IconSize::XSmall)
+                                                .color(Color::Info),
+                                        )
+                                        .child(
+                                            Label::new(remote_name.clone())
+                                                .size(LabelSize::XSmall)
+                                                .weight(gpui::FontWeight::SEMIBOLD)
+                                                .truncate(),
+                                        )
+                                        .when(is_default, |el| {
+                                            el.child(
+                                                Label::new("默认")
                                                     .size(LabelSize::XSmall)
-                                                    .weight(gpui::FontWeight::SEMIBOLD)
-                                                    .truncate(),
+                                                    .color(Color::Accent),
                                             )
-                                            .when(is_default, |el| {
-                                                el.child(
-                                                    Label::new("默认")
-                                                        .size(LabelSize::XSmall)
-                                                        .color(Color::Accent),
-                                                )
-                                            })
-                                            .child(div().flex_1())
-                                            .child(
-                                                IconButton::new(
-                                                    ElementId::NamedInteger(
-                                                        "remote-fetch".into(),
-                                                        i as u64,
-                                                    ),
-                                                    IconName::Refresh,
-                                                )
-                                                .size(ButtonSize::Compact)
-                                                .color(Color::Info)
-                                                .tooltip(t!("common.fetch_remote.tooltip"))
-                                                .on_click(
-                                                    move |_: &ClickEvent, _, cx: &mut App| {
-                                                        let _ =
-                                                            w_fetch.clone().update(cx, |_, cx| {
-                                                                cx.emit(SidebarEvent::RemoteFetch(
-                                                                    fetch_remote.to_string(),
-                                                                ));
-                                                            });
-                                                    },
+                                        })
+                                        .child(div().flex_1())
+                                        .child(
+                                            IconButton::new(
+                                                ElementId::NamedInteger(
+                                                    "remote-fetch".into(),
+                                                    i as u64,
                                                 ),
+                                                IconName::Refresh,
                                             )
-                                            .child(
-                                                IconButton::new(
-                                                    ElementId::NamedInteger(
-                                                        "remote-edit".into(),
-                                                        i as u64,
-                                                    ),
-                                                    IconName::Edit,
-                                                )
-                                                .size(ButtonSize::Compact)
-                                                .color(Color::Muted)
-                                                .tooltip("修改远程地址")
-                                                .on_click(
-                                                    move |_: &ClickEvent, _, cx: &mut App| {
-                                                        let _ = w_edit.clone().update(cx, |_, cx| {
-                                                            cx.emit(SidebarEvent::RemoteEdit {
-                                                                name: edit_remote.to_string(),
-                                                                url: edit_url.clone(),
-                                                                is_default: edit_is_default,
-                                                            });
-                                                        });
-                                                    },
-                                                ),
-                                            )
-                                            .child(
-                                                IconButton::new(
-                                                    ElementId::NamedInteger(
-                                                        "remote-pull".into(),
-                                                        i as u64,
-                                                    ),
-                                                    IconName::ArrowDown,
-                                                )
-                                                .size(ButtonSize::Compact)
-                                                .color(Color::Warning)
-                                                .tooltip(t!("common.pull_remote.tooltip"))
-                                                .on_click(
-                                                    move |_: &ClickEvent, _, cx: &mut App| {
-                                                        let _ =
-                                                            w_pull.clone().update(cx, |_, cx| {
-                                                                cx.emit(SidebarEvent::RemotePull(
-                                                                    pull_remote.to_string(),
-                                                                ));
-                                                            });
-                                                    },
-                                                ),
-                                            )
-                                            .child(
-                                                IconButton::new(
-                                                    ElementId::NamedInteger(
-                                                        "remote-push".into(),
-                                                        i as u64,
-                                                    ),
-                                                    IconName::ArrowUp,
-                                                )
-                                                .size(ButtonSize::Compact)
-                                                .color(Color::Success)
-                                                .tooltip(t!("common.push_remote.tooltip"))
-                                                .on_click(
-                                                    move |_: &ClickEvent, _, cx: &mut App| {
-                                                        let _ =
-                                                            w_push.clone().update(cx, |_, cx| {
-                                                                cx.emit(SidebarEvent::RemotePush(
-                                                                    push_remote.to_string(),
-                                                                ));
-                                                            });
-                                                    },
-                                                ),
-                                            )
-                                            .child(
-                                                IconButton::new(
-                                                    ElementId::NamedInteger(
-                                                        "remote-remove".into(),
-                                                        i as u64,
-                                                    ),
-                                                    IconName::Trash,
-                                                )
-                                                .size(ButtonSize::Compact)
-                                                .color(Color::Deleted)
-                                                .tooltip(t!("sidebar.remove_remote.tooltip"))
-                                                .on_click(
-                                                    move |_: &ClickEvent, _, cx: &mut App| {
-                                                        let _ =
-                                                            w_remove.clone().update(cx, |_, cx| {
-                                                                cx.emit(
-                                                                    SidebarEvent::RemoteRemove(
-                                                                        remove_remote.to_string(),
-                                                                    ),
-                                                                );
-                                                            });
-                                                    },
-                                                ),
+                                            .size(ButtonSize::Compact)
+                                            .color(Color::Info)
+                                            .tooltip(t!("common.fetch_remote.tooltip"))
+                                            .on_click(
+                                                move |_: &ClickEvent, _, cx: &mut App| {
+                                                    let _ = w_fetch.clone().update(cx, |_, cx| {
+                                                        cx.emit(SidebarEvent::RemoteFetch(
+                                                            fetch_remote.to_string(),
+                                                        ));
+                                                    });
+                                                },
                                             ),
-                                    );
-                                    item = item.child(
-                                        Label::new(SharedString::from(url_text))
-                                            .size(LabelSize::XSmall)
+                                        )
+                                        .child(
+                                            IconButton::new(
+                                                ElementId::NamedInteger(
+                                                    "remote-edit".into(),
+                                                    i as u64,
+                                                ),
+                                                IconName::Edit,
+                                            )
+                                            .size(ButtonSize::Compact)
                                             .color(Color::Muted)
-                                            .truncate(),
-                                    );
-                                    item
-                                })
-                                .collect()
-                        },
-                    )
-                    .h(px(list_height))
-                    .with_sizing_behavior(ListSizingBehavior::Auto)
-                    .track_scroll(&self.remotes_scroll),
+                                            .tooltip("修改远程地址")
+                                            .on_click(
+                                                move |_: &ClickEvent, _, cx: &mut App| {
+                                                    let _ = w_edit.clone().update(cx, |_, cx| {
+                                                        cx.emit(SidebarEvent::RemoteEdit {
+                                                            name: edit_remote.to_string(),
+                                                            url: edit_url.clone(),
+                                                            is_default: edit_is_default,
+                                                        });
+                                                    });
+                                                },
+                                            ),
+                                        )
+                                        .child(
+                                            IconButton::new(
+                                                ElementId::NamedInteger(
+                                                    "remote-pull".into(),
+                                                    i as u64,
+                                                ),
+                                                IconName::ArrowDown,
+                                            )
+                                            .size(ButtonSize::Compact)
+                                            .color(Color::Warning)
+                                            .tooltip(t!("common.pull_remote.tooltip"))
+                                            .on_click(
+                                                move |_: &ClickEvent, _, cx: &mut App| {
+                                                    let _ = w_pull.clone().update(cx, |_, cx| {
+                                                        cx.emit(SidebarEvent::RemotePull(
+                                                            pull_remote.to_string(),
+                                                        ));
+                                                    });
+                                                },
+                                            ),
+                                        )
+                                        .child(
+                                            IconButton::new(
+                                                ElementId::NamedInteger(
+                                                    "remote-push".into(),
+                                                    i as u64,
+                                                ),
+                                                IconName::ArrowUp,
+                                            )
+                                            .size(ButtonSize::Compact)
+                                            .color(Color::Success)
+                                            .tooltip(t!("common.push_remote.tooltip"))
+                                            .on_click(
+                                                move |_: &ClickEvent, _, cx: &mut App| {
+                                                    let _ = w_push.clone().update(cx, |_, cx| {
+                                                        cx.emit(SidebarEvent::RemotePush(
+                                                            push_remote.to_string(),
+                                                        ));
+                                                    });
+                                                },
+                                            ),
+                                        )
+                                        .child(
+                                            IconButton::new(
+                                                ElementId::NamedInteger(
+                                                    "remote-remove".into(),
+                                                    i as u64,
+                                                ),
+                                                IconName::Trash,
+                                            )
+                                            .size(ButtonSize::Compact)
+                                            .color(Color::Deleted)
+                                            .tooltip(t!("sidebar.remove_remote.tooltip"))
+                                            .on_click(
+                                                move |_: &ClickEvent, _, cx: &mut App| {
+                                                    let _ = w_remove.clone().update(cx, |_, cx| {
+                                                        cx.emit(SidebarEvent::RemoteRemove(
+                                                            remove_remote.to_string(),
+                                                        ));
+                                                    });
+                                                },
+                                            ),
+                                        ),
+                                );
+                                item = item.child(
+                                    Label::new(SharedString::from(url_text))
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Muted)
+                                        .truncate(),
+                                );
+                                item
+                            })
+                            .collect()
+                    },
+                )
+                .h_full()
+                .with_sizing_behavior(ListSizingBehavior::Auto)
+                .track_scroll(&self.remotes_scroll);
+                content = content.child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .w_full()
+                        .h(px(list_height))
+                        .child(div().flex_1().min_w_0().h_full().child(list))
+                        .when(show_remotes_scrollbar, |el| {
+                            el.child(Scrollbar::vertical(
+                                "remotes-scrollbar",
+                                self.remotes_scroll.clone(),
+                            ))
+                        }),
                 );
             }
         }
@@ -3160,11 +3231,13 @@ impl Render for Sidebar {
                 );
             }
             let nav_base = nav_idx;
-            nav_idx += self.flattened_remote_branches.len();
-            let flattened = self.flattened_remote_branches.clone();
+            nav_idx += self.flattened_remote_tree.len();
+            let flattened = self.flattened_remote_tree.clone();
             let list_height = list_heights.remote_branches;
             let show_remote_scrollbar = flattened.len() as f32 * item_h > list_height + 0.5;
             let remote_branches = self.remote_branches.clone();
+            let remotes = self.remotes.clone();
+            let collapsed_groups = self.collapsed_remote_groups.clone();
             let w = Rc::new(sidebar_weak.clone());
             let colors = colors.clone();
 
@@ -3175,11 +3248,72 @@ impl Render for Sidebar {
                     let w = w.clone();
                     range
                         .map(|i| {
-                            let branch_idx = flattened[i];
-                            let branch = &remote_branches[branch_idx];
                             let kb_active = keyboard_index == Some(nav_base + i);
-                            let name: SharedString = branch.name.clone().into();
-                            let remote_branch_name = name.clone();
+                            if let SidebarItem::RemoteBranchGroup(name) = &flattened[i] {
+                                let collapsed = collapsed_groups.contains(name);
+                                let group_name = name.clone();
+                                let w_group = w.clone();
+                                return div()
+                                    .id(ElementId::NamedInteger(
+                                        "remote-branch-group".into(),
+                                        i as u64,
+                                    ))
+                                    .h_flex()
+                                    .w_full()
+                                    .h(px(item_h))
+                                    .pl(px(16.))
+                                    .gap(px(4.))
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .when(kb_active, |el| {
+                                        el.bg(colors.ghost_element_hover)
+                                            .border_l_2()
+                                            .border_color(kb_accent)
+                                    })
+                                    .hover(|s| s.bg(colors.ghost_element_hover))
+                                    .on_click(move |_, _, cx| {
+                                        w_group
+                                            .update(cx, |sidebar, cx| {
+                                                sidebar.toggle_remote_group(group_name.clone(), cx);
+                                            })
+                                            .ok();
+                                    })
+                                    .child(
+                                        rgitui_ui::Icon::new(if collapsed {
+                                            IconName::ChevronRight
+                                        } else {
+                                            IconName::ChevronDown
+                                        })
+                                        .size(rgitui_ui::IconSize::XSmall)
+                                        .color(Color::Muted),
+                                    )
+                                    .child(
+                                        rgitui_ui::Icon::new(IconName::ExternalLink)
+                                            .size(rgitui_ui::IconSize::XSmall)
+                                            .color(Color::Info),
+                                    )
+                                    .child(
+                                        Label::new(SharedString::from(name.clone()))
+                                            .size(LabelSize::XSmall)
+                                            .weight(gpui::FontWeight::SEMIBOLD)
+                                            .truncate(),
+                                    )
+                                    .into_any_element();
+                            }
+                            let SidebarItem::RemoteBranch(branch_idx) = &flattened[i] else {
+                                unreachable!("远端分支树只包含远端分组和分支");
+                            };
+                            let branch_idx = *branch_idx;
+                            let branch = &remote_branches[branch_idx];
+                            let group = remote_branch_group(&branch.name, &remotes);
+                            let label = branch
+                                .name
+                                .strip_prefix(group)
+                                .and_then(|suffix| suffix.strip_prefix('/'))
+                                .unwrap_or(branch.name.as_str());
+                            let name: SharedString = label.to_string().into();
+                            // 显示省略远端前缀，所有操作仍使用完整引用名。
+                            let remote_branch_name: SharedString = branch.name.clone().into();
                             let w_item = w.clone();
                             let w_menu = w.clone();
 
@@ -3189,7 +3323,7 @@ impl Render for Sidebar {
                                 .w_full()
                                 .h(px(item_h))
                                 .px_2()
-                                .pl(px(16.))
+                                .pl(px(44.))
                                 .gap(px(4.))
                                 .items_center()
                                 .when(kb_active, |el| {
@@ -3249,6 +3383,7 @@ impl Render for Sidebar {
                                         .color(Color::Muted)
                                         .truncate(),
                                 )
+                                .into_any_element()
                         })
                         .collect()
                 },
@@ -5402,12 +5537,13 @@ mod census {
         }
     }
 
-    /// Only the two directory variants own anything; the rest are indices into
-    /// lists this walk charges elsewhere.
+    /// 目录与远端分组持有名称，其他节点仅保存源列表的索引。
     impl HeapSize for SidebarItem {
         fn heap_size(&self, census: &mut Census) -> usize {
             match self {
-                SidebarItem::StagedDir(key) | SidebarItem::UnstagedDir(key) => {
+                SidebarItem::StagedDir(key)
+                | SidebarItem::UnstagedDir(key)
+                | SidebarItem::RemoteBranchGroup(key) => {
                     key.heap_size(census)
                 }
                 _ => 0,
@@ -5514,6 +5650,8 @@ mod census {
                 + self.0.collapsed_dirs.heap_size(census)
                 + self.0.flattened_local_branches.heap_size(census)
                 + self.0.flattened_remote_branches.heap_size(census)
+                + self.0.flattened_remote_tree.heap_size(census)
+                + self.0.collapsed_remote_groups.heap_size(census)
                 + self.0.flattened_tags.heap_size(census)
                 + self.0.flattened_stashes.heap_size(census)
                 + self.0.flattened_worktrees.heap_size(census)
@@ -5904,6 +6042,91 @@ mod tests {
     }
 
     #[test]
+    fn remote_branch_tree_preserves_actions_when_collapsed_filtered_and_refreshed() {
+        let mut sidebar = rgitui_test_support::ViewTest::open(|_, cx| {
+            rgitui_settings::init_test(cx);
+            Sidebar::new(cx)
+        });
+        sidebar.update(|sidebar, _, cx| {
+            sidebar.toggle_section(SidebarSection::RemoteBranches, cx);
+            let branches = ["cy/dev", "origin/dev", "cy/HEAD", "origin/feature/a"].map(|name| {
+                let mut branch = make_branch(name);
+                branch.is_remote = true;
+                branch
+            });
+            sidebar.update_branches(branches.to_vec(), cx);
+            let names = |sidebar: &Sidebar| {
+                sidebar
+                    .flattened_remote_tree
+                    .iter()
+                    .map(|row| match row {
+                        SidebarItem::RemoteBranchGroup(name) => format!("group:{name}"),
+                        SidebarItem::RemoteBranch(index) => {
+                            sidebar.remote_branches[*index].name.clone()
+                        }
+                        _ => panic!("远端分支树出现无关行"),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                names(sidebar),
+                [
+                    "group:origin",
+                    "origin/dev",
+                    "origin/feature/a",
+                    "group:cy",
+                    "cy/dev",
+                    "cy/HEAD"
+                ]
+            );
+
+            sidebar.toggle_remote_group("origin".into(), cx);
+            assert_eq!(
+                names(sidebar),
+                ["group:origin", "group:cy", "cy/dev", "cy/HEAD"]
+            );
+            assert_eq!(
+                sidebar
+                    .cached_nav_items
+                    .iter()
+                    .filter(|row| matches!(row, SidebarItem::RemoteBranch(_)))
+                    .count(),
+                2
+            );
+
+            sidebar.remote_branch_filter = "dev".into();
+            sidebar.rebuild_flattened_branches();
+            sidebar.rebuild_nav_items();
+            assert_eq!(names(sidebar), ["group:origin", "group:cy", "cy/dev"]);
+            sidebar.toggle_remote_group("origin".into(), cx);
+            assert_eq!(
+                names(sidebar),
+                ["group:origin", "origin/dev", "group:cy", "cy/dev"]
+            );
+
+            sidebar.update_branches(vec![branches[0].clone()], cx);
+            assert_eq!(names(sidebar), ["group:cy", "cy/dev"]);
+        });
+        sidebar.draw();
+    }
+
+    #[test]
+    fn remote_branch_groups_use_full_configured_remote_names() {
+        let remotes = ["team", "team/origin"].map(|name| RemoteInfo {
+            name: name.into(),
+            url: None,
+            push_url: None,
+            is_default: false,
+        });
+        assert_eq!(
+            remote_branch_group("team/origin/feature/a", &remotes),
+            "team/origin"
+        );
+        assert_eq!(remote_branch_group("team/dev", &remotes), "team");
+        assert_eq!(remote_branch_group("orphan/dev", &remotes), "orphan");
+    }
+
+    #[test]
     fn test_filter_branches_empty_filter_returns_all() {
         let branches = vec![
             make_branch("main"),
@@ -6154,6 +6377,37 @@ mod popover_view_tests {
             open_popover(host),
             Some(SidebarPopover::ChangeListOptions(ChangeList::Staged))
         );
+    }
+
+    #[test]
+    fn remote_addresses_show_origin_first_and_reserve_two_lines_per_remote() {
+        let mut host = ViewTest::open(Host::new);
+        host.update(|host, _, cx| {
+            host.sidebar.update(cx, |sidebar, cx| {
+                sidebar.update_remotes(
+                    ["cy", "origin"]
+                        .map(|name| rgitui_git::RemoteInfo {
+                            name: name.into(),
+                            url: Some(format!("ssh://git@example.com/{name}/client.git")),
+                            push_url: None,
+                            is_default: false,
+                        })
+                        .into(),
+                    cx,
+                );
+                let heights =
+                    sidebar.plan_list_heights(28.0, 28.0, rgitui_settings::Compactness::Default);
+                assert!(
+                    heights.remotes >= 112.0,
+                    "两个地址需要四行高度，实际为 {}",
+                    heights.remotes
+                );
+                let first = sidebar.flattened_remotes[0];
+                assert_eq!(sidebar.remotes[first].name, "origin");
+            });
+        });
+        host.draw();
+        host.draw();
     }
 
     #[test]

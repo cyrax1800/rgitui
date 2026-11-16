@@ -113,7 +113,6 @@ impl RemoteDialog {
             .update(cx, |editor, cx| editor.set_text(name, cx));
         self.error = None;
         self.submitting = false;
-        self.name_editor.update(cx, |editor, cx| editor.clear(cx));
         self.url_editor
             .update(cx, |editor, cx| editor.set_text(url, cx));
         cx.notify();
@@ -316,5 +315,27 @@ impl RemoteDialog {
             .items_center()
             .child(Label::new(label).size(LabelSize::Small).color(Color::Muted))
             .child(div().flex_1().child(editor))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rgitui_test_support::ViewTest;
+
+    #[test]
+    fn editing_each_remote_preserves_its_name_and_url() {
+        let mut dialog = ViewTest::open(|_, cx| {
+            rgitui_settings::init_test(cx);
+            RemoteDialog::new(cx)
+        });
+        for name in ["origin", "cy"] {
+            dialog.update(|dialog, _, cx| {
+                let url = format!("ssh://git@example.com/{name}/client.git");
+                dialog.show_edit(name.into(), url.clone(), false, cx);
+                assert_eq!(dialog.name_editor.read(cx).text(), name);
+                assert_eq!(dialog.url_editor.read(cx).text(), url);
+            });
+        }
     }
 }
