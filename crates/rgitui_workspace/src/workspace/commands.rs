@@ -14,6 +14,78 @@ const DETAIL_PANEL_STEP: f32 = 20.0;
 const DIFF_VIEWER_STEP: f32 = 30.0;
 
 impl Workspace {
+    /// 所有分支切换入口共用磁盘预检与修改处理选择，异步结果绑定原工作树。
+    pub(super) fn request_branch_checkout(
+        &mut self,
+        project: gpui::Entity<rgitui_git::GitProject>,
+        target: String,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self
+            .tabs
+            .get(self.active_tab)
+            .filter(|tab| tab.project == project)
+        else {
+            return;
+        };
+        let worktree_path = tab.effective_repo_path(cx);
+        let repo_path = project.read(cx).repo_path().to_path_buf();
+        cx.spawn(async move |this, cx: &mut gpui::AsyncApp| {
+            let path = worktree_path.clone();
+            let state = cx
+                .background_executor()
+                .spawn(async move { rgitui_git::branch_switch_state(&path) })
+                .await;
+            this.update(cx, |this, cx| {
+                // 用户已切换项目或工作树时，不在另一个项目上弹出过期的确认框。
+                let still_active = this.tabs.get(this.active_tab).is_some_and(|tab| {
+                    tab.project == project && tab.effective_repo_path(cx) == worktree_path
+                });
+                if !still_active {
+                    return;
+                }
+                match state {
+                    Ok((source, source_oid, dirty)) if dirty => {
+                        this.dialogs.confirm_dialog.update(cx, |dialog, cx| {
+                            dialog.show_visible(
+                                ConfirmAction::SwitchBranch {
+                                    repo_path,
+                                    worktree_path,
+                                    source,
+                                    source_oid,
+                                    target,
+                                    bring_changes: false,
+                                },
+                                cx,
+                            );
+                        });
+                    }
+                    Ok((source, source_oid, _)) => {
+                        project.update(cx, |project, cx| {
+                            project
+                                .checkout_branch_with_changes_at(
+                                    &target,
+                                    &worktree_path,
+                                    rgitui_git::BranchSwitchMode::RequireClean,
+                                    Some((source, source_oid)),
+                                    cx,
+                                )
+                                .detach();
+                        });
+                    }
+                    Err(error) => this.show_toast(
+                        rgitui_i18n::t!("branch_switch.failed", error = error.to_string()),
+                        ToastKind::Error,
+                        cx,
+                    ),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// Entry point for keyboard-invoked commands.
     ///
     /// The generated `on_action` handlers (see [`crate::keymap::attach_actions`])
@@ -302,7 +374,7 @@ impl Workspace {
             );
             return;
         };
-        project.update(cx, |proj, cx| proj.checkout_branch(&branch, cx).detach());
+        self.request_branch_checkout(project, branch, cx);
     }
 
     /// Shows the commit graph with HEAD's commit selected, scrolled into view and

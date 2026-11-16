@@ -11,6 +11,14 @@ use crate::CommandId;
 /// The action that was confirmed (so the workspace knows what to do).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfirmAction {
+    SwitchBranch {
+        repo_path: std::path::PathBuf,
+        worktree_path: std::path::PathBuf,
+        source: String,
+        source_oid: git2::Oid,
+        target: String,
+        bring_changes: bool,
+    },
     PullPreview(PullPreview),
     DiscardFile(String),
     DiscardFiles(Vec<String>),
@@ -121,6 +129,7 @@ impl ConfirmDialog {
 
     fn severity_icon(&self) -> IconName {
         match &self.action {
+            Some(ConfirmAction::SwitchBranch { .. }) => IconName::GitBranch,
             Some(ConfirmAction::ForcePush) => IconName::AlertTriangle,
             Some(ConfirmAction::PullPreview(_)) => IconName::GitPullRequest,
             Some(_) => IconName::Trash,
@@ -139,6 +148,7 @@ impl ConfirmDialog {
     /// The confirm button's label for `action`, in the active language.
     fn confirm_label(action: &Option<ConfirmAction>) -> SharedString {
         match action {
+            Some(ConfirmAction::SwitchBranch { .. }) => t!("branch_switch.title"),
             Some(ConfirmAction::PullPreview(_)) => t!("toolbar.pull"),
             Some(
                 ConfirmAction::DiscardFile(_)
@@ -167,6 +177,7 @@ impl ConfirmDialog {
     /// The title and warning for `action`, in the active language.
     fn text(action: &ConfirmAction) -> (SharedString, SharedString) {
         match action {
+            ConfirmAction::SwitchBranch { .. } => (t!("branch_switch.title"), t!("branch_switch.body")),
             ConfirmAction::PullPreview(preview) => (
                 t!("confirm.title.pull_preview"),
                 t!(
@@ -271,6 +282,101 @@ impl ConfirmDialog {
             ),
         }
     }
+
+    fn switch_choices(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        let Some(ConfirmAction::SwitchBranch {
+            source,
+            target,
+            bring_changes,
+            ..
+        }) = &self.action
+        else {
+            return None;
+        };
+        let mut choices = div().v_flex().gap(px(8.));
+        for (bring, title, hint) in [
+            (
+                false,
+                t!("branch_switch.leave", branch = source),
+                t!("branch_switch.leave_hint"),
+            ),
+            (
+                true,
+                t!("branch_switch.bring", branch = target),
+                t!("branch_switch.bring_hint"),
+            ),
+        ] {
+            let selected = bring == *bring_changes;
+            let colors = cx.colors();
+            choices = choices.child(
+                div()
+                    .id(if bring {
+                        "switch-bring"
+                    } else {
+                        "switch-leave"
+                    })
+                    .debug_selector(move || {
+                        if bring {
+                            "switch-bring".into()
+                        } else {
+                            "switch-leave".into()
+                        }
+                    })
+                    .h_flex()
+                    .p(px(12.))
+                    .gap(px(10.))
+                    .border_1()
+                    .border_color(if selected {
+                        colors.text_accent
+                    } else {
+                        colors.border
+                    })
+                    .rounded(px(5.))
+                    .cursor_pointer()
+                    .when(selected, |el| el.bg(colors.ghost_element_selected))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(ConfirmAction::SwitchBranch { bring_changes, .. }) =
+                            this.action.as_mut()
+                        {
+                            *bring_changes = bring;
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        div()
+                            .size(px(18.))
+                            .flex_shrink_0()
+                            .rounded_full()
+                            .border_1()
+                            .border_color(if selected {
+                                colors.text_accent
+                            } else {
+                                colors.text_muted
+                            })
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .when(selected, |el| {
+                                el.child(div().size(px(10.)).rounded_full().bg(colors.text_accent))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(4.))
+                            .child(
+                                Label::new(title)
+                                    .size(LabelSize::Small)
+                                    .weight(gpui::FontWeight::SEMIBOLD),
+                            )
+                            .child(Label::new(hint).size(LabelSize::Small).color(Color::Muted)),
+                    ),
+            );
+        }
+        Some(choices)
+    }
 }
 
 /// A commit id cut to the seven characters the graph shows.
@@ -326,6 +432,8 @@ impl Render for ConfirmDialog {
         let color = self.severity_color();
         let confirm_label = Self::confirm_label(&self.action);
         let is_destructive = self.is_destructive();
+        let switch_choices = self.switch_choices(cx);
+        let is_switch = switch_choices.is_some();
 
         let icon_bg = color.color(cx);
         let icon_bg_subtle = gpui::Hsla { a: 0.12, ..icon_bg };
@@ -352,6 +460,7 @@ impl Render for ConfirmDialog {
             .child(
                 div()
                     .id("confirm-dialog-modal")
+                    .debug_selector(|| "confirm-card".into())
                     .track_focus(&self.focus_handle)
                     .map(|el| {
                         keymap::bind_actions(
@@ -363,7 +472,9 @@ impl Render for ConfirmDialog {
                         )
                     })
                     .v_flex()
-                    .w(px(420.))
+                    .w(px(if is_switch { 560. } else { 420. }))
+                    .max_w((window.viewport_size().width - px(32.)).max(px(0.)))
+                    .max_h((window.viewport_size().height - px(32.)).max(px(0.)))
                     .elevation_3(cx)
                     .p(px(20.))
                     .gap(px(16.))
@@ -373,6 +484,7 @@ impl Render for ConfirmDialog {
                     .child(
                         div()
                             .h_flex()
+                            .flex_shrink_0()
                             .gap_3()
                             .items_center()
                             .child(
@@ -392,14 +504,24 @@ impl Render for ConfirmDialog {
                             ),
                     )
                     .child(
-                        div().pl(px(48.)).child(
-                            Label::new(message)
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        ),
+                        div()
+                            .id("confirm-dialog-message")
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .v_flex()
+                            .gap(px(12.))
+                            .pl(px(if is_switch { 0. } else { 48. }))
+                            .child(
+                                Label::new(message)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .children(switch_choices),
                     )
                     .child(
                         div()
+                            .debug_selector(|| "confirm-actions".into())
+                            .flex_shrink_0()
                             .pt_2()
                             .border_t_1()
                             .border_color(colors.border_variant)
@@ -454,6 +576,69 @@ impl Render for ConfirmDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn branch_switch_defaults_to_leave_and_allows_bring_or_cancel(cx: &mut gpui::TestAppContext) {
+        cx.update(rgitui_theme::init);
+        let (dialog, cx) = cx.add_window_view(|_, cx| ConfirmDialog::new(cx));
+        cx.simulate_resize(gpui::size(px(800.), px(600.)));
+        dialog.update(cx, |dialog, cx| {
+            dialog.show_visible(
+                ConfirmAction::SwitchBranch {
+                    repo_path: "repo".into(),
+                    worktree_path: "repo".into(),
+                    source: "dev".into(),
+                    source_oid: git2::Oid::zero(),
+                    target: "release".into(),
+                    bring_changes: false,
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(dialog.read_with(cx, |dialog, _| matches!(
+            dialog.action,
+            Some(ConfirmAction::SwitchBranch {
+                bring_changes: false,
+                ..
+            })
+        )));
+        let bring = cx.debug_bounds("switch-bring").unwrap();
+        cx.simulate_click(bring.center(), Default::default());
+        assert!(dialog.read_with(cx, |dialog, _| matches!(
+            dialog.action,
+            Some(ConfirmAction::SwitchBranch {
+                bring_changes: true,
+                ..
+            })
+        )));
+        let footer = cx.debug_bounds("confirm-actions").unwrap();
+        assert!(footer.origin.y >= px(0.) && footer.bottom() <= px(600.));
+        dialog.update(cx, |dialog, cx| dialog.cancel(cx));
+        assert!(!dialog.read_with(cx, |dialog, _| dialog.is_visible()));
+    }
+
+    #[gpui::test]
+    fn long_discard_message_keeps_confirmation_in_the_viewport(cx: &mut gpui::TestAppContext) {
+        cx.update(rgitui_theme::init);
+        let (dialog, cx) = cx.add_window_view(|_, cx| ConfirmDialog::new(cx));
+        cx.simulate_resize(gpui::size(px(800.), px(600.)));
+        dialog.update(cx, |dialog, cx| {
+            let paths = (0..35).map(|i| format!("UnityProject/Assets/GameRes/Art/Scenes/WorldMap/share/scenery_surface/very_long_resource_name_{i}.png.meta")).collect();
+            dialog.show_visible(ConfirmAction::DiscardFiles(paths), cx);
+        });
+        cx.run_until_parked();
+        let card = cx.debug_bounds("confirm-card").expect("确认卡片");
+        let footer = cx.debug_bounds("confirm-actions").expect("确认按钮区");
+        assert!(
+            card.origin.y >= px(0.) && card.bottom() <= px(600.),
+            "确认卡片超出窗口：{card:?}"
+        );
+        assert!(
+            footer.origin.y >= px(0.) && footer.bottom() <= px(600.),
+            "确认按钮区不可见：{footer:?}"
+        );
+    }
 
     // ConfirmAction
 

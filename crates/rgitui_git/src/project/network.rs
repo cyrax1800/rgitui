@@ -46,7 +46,7 @@ fn network_lock(worktree: &Path) -> Arc<Mutex<()>> {
     locks.entry(path).or_default().clone()
 }
 
-fn with_network_lock<T>(worktree: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+pub(super) fn with_network_lock<T>(worktree: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
     let lock = network_lock(worktree);
     let _guard = lock.lock().unwrap_or_else(|poison| poison.into_inner());
     operation()

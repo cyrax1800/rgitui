@@ -14,7 +14,7 @@ use super::argsafe::{validate_branch_name, validate_remote_name};
 use super::auth::{inject_https_credentials, run_git_network_command};
 use super::refresh::{gather_refresh_data, gather_refresh_data_lightweight_cached};
 use super::worktree_patch::{clean_worktree_bytes, smudge_canonical_bytes};
-use super::{ensure_clean_worktree, head_branch_name, GitProject, GitProjectEvent, RefreshData};
+use super::{ensure_clean_worktree, GitProject, GitProjectEvent, RefreshData};
 
 fn validate_remote_url(url: &str) -> Result<()> {
     if url.trim().is_empty() || url.chars().any(char::is_control) {
@@ -1307,9 +1307,28 @@ impl GitProject {
     /// Handles both local branches and remote tracking branches (e.g. `origin/main`).
     /// For remote branches, creates a local tracking branch first.
     pub fn checkout_branch(&mut self, name: &str, cx: &mut Context<Self>) -> Task<Result<()>> {
-        log::info!("checkout_branch: name={}", name);
+        let worktree = self.repo_path.clone();
+        self.checkout_branch_with_changes_at(
+            name,
+            &worktree,
+            super::BranchSwitchMode::RequireClean,
+            None,
+            cx,
+        )
+    }
+
+    /// 在指定工作树切换分支；确认窗口的源分支和提交必须仍与磁盘一致。
+    pub fn checkout_branch_with_changes_at(
+        &mut self,
+        name: &str,
+        worktree_path: &Path,
+        mode: super::BranchSwitchMode,
+        expected: Option<(String, git2::Oid)>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
         let name = name.to_string();
         let task_name = name.clone();
+        let worktree_path = worktree_path.to_path_buf();
         let repo_path = self.repo_path.clone();
         let commit_limit = self.commit_limit;
         let operation_id = self.begin_operation(
@@ -1319,124 +1338,67 @@ impl GitProject {
             Some(name.clone()),
             cx,
         );
+        self.note_operation_worktree(operation_id, &worktree_path);
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let result: anyhow::Result<(Message, RefreshData)> = cx
+            let (result, refresh) = cx
                 .background_executor()
                 .spawn(async move {
-                    let repo = Repository::open(&repo_path)?;
-                    ensure_clean_worktree(&repo, GitOperationKind::Checkout.name())?;
-                    let current_branch = head_branch_name(&repo).ok();
-
-                    // Determine whether this is a local or remote branch, and the
-                    // object + local branch name to use.
-                    let (obj, local_branch_name, is_tracking) =
-                        match repo.revparse_single(&format!("refs/heads/{}", task_name)) {
-                            Ok(o) => (o, task_name.clone(), false),
-                            Err(_) => {
-                                // Not a local branch — check if it's a remote tracking branch
-                                // (e.g. "origin/main" → refs/remotes/origin/main).
-                                let remote_ref = format!("refs/remotes/{}", task_name);
-                                if let Ok(remote_obj) = repo.revparse_single(&remote_ref) {
-                                    let Some((_remote, short)) = task_name.split_once('/') else {
-                                        return Err(error(msg!(
-                                            "git.error.invalid_remote_branch",
-                                            branch = &task_name
-                                        )));
-                                    };
-                                    let local_branch_name = short;
-
-                                    // Refuse to overwrite an existing local branch.
-                                    if repo
-                                        .find_branch(local_branch_name, git2::BranchType::Local)
-                                        .is_ok()
-                                    {
-                                        return Err(error(msg!(
-                                            "git.error.local_branch_exists",
-                                            branch = &local_branch_name
-                                        )));
-                                    }
-
-                                    // Create the local tracking branch at the remote's commit.
-                                    let commit = remote_obj.peel_to_commit()?;
-                                    repo.branch(local_branch_name, &commit, false)?;
-
-                                    // Set upstream to track the remote branch.
-                                    if let Ok(mut branch) =
-                                        repo.find_branch(local_branch_name, git2::BranchType::Local)
-                                    {
-                                        let _ = branch.set_upstream(Some(&task_name));
-                                    }
-
-                                    (remote_obj, local_branch_name.to_string(), true)
-                                } else {
-                                    return Err(error(msg!(
-                                        "git.error.branch_not_found",
-                                        branch = &task_name
-                                    )));
-                                }
-                            }
-                        };
-
-                    // Bail if already on the target branch (use local name for tracking).
-                    if current_branch.as_deref() == Some(local_branch_name.as_str()) {
-                        return Err(error(msg!(
-                            "git.error.already_on_branch",
-                            branch = &local_branch_name
-                        )));
-                    }
-
-                    let head_ref = if is_tracking {
-                        format!("refs/heads/{}", local_branch_name)
-                    } else {
-                        format!("refs/heads/{}", task_name)
-                    };
-
-                    checkout_tree_safe(&repo, &obj, GitOperationKind::Checkout)?;
-                    repo.set_head(&head_ref)?;
-                    let data = gather_refresh_data(&repo_path, commit_limit)?;
-                    let msg = if is_tracking {
-                        msg!(
-                            "git.checkout_branch.done_tracking",
-                            branch = &local_branch_name,
-                            upstream = &task_name
-                        )
-                    } else {
-                        msg!("git.checkout_branch.done", branch = &task_name)
-                    };
-                    Ok((msg, data))
+                    let result: Result<Message> = (|| {
+                        let mut repo = Repository::open(&worktree_path)?;
+                        let expected = expected
+                            .as_ref()
+                            .map(|(branch, oid)| (branch.as_str(), *oid));
+                        let (local_name, tracking) = super::branch_switch::switch_branch(
+                            &mut repo, &task_name, mode, expected,
+                        )?;
+                        Ok(if tracking {
+                            msg!(
+                                "git.checkout_branch.done_tracking",
+                                branch = &local_name,
+                                upstream = &task_name
+                            )
+                        } else {
+                            msg!("git.checkout_branch.done", branch = &task_name)
+                        })
+                    })();
+                    // 恢复储藏可能产生冲突；即使操作报错，也必须展示磁盘上的真实分支和状态。
+                    let refresh = gather_refresh_data(&repo_path, commit_limit);
+                    (result, refresh)
                 })
                 .await;
 
             cx.update(|cx| {
                 this.update(cx, |this, cx| {
-                    match result {
-                        Ok((msg, data)) => {
+                    let result = match refresh {
+                        Ok(data) => {
                             this.apply_refresh_data(data);
-                            this.complete_op(
-                                operation_id,
-                                GitOperationKind::Checkout,
-                                msg,
-                                (
-                                    Some(msg!("git.checkout_branch.detail")),
-                                    None,
-                                    Some(name.clone()),
-                                ),
-                                cx,
-                            );
                             cx.emit(GitProjectEvent::RepositoryChanged);
-                            cx.notify();
+                            result
                         }
-                        Err(e) => {
-                            this.fail_op(
-                                operation_id,
-                                GitOperationKind::Checkout,
-                                msg!("git.checkout_branch.failed", branch = &name),
-                                error_message(&e),
-                                (None, Some(name.clone()), true),
-                                cx,
-                            );
-                        }
+                        Err(error) => result.and(Err(error)),
+                    };
+                    match result {
+                        Ok(message) => this.complete_op(
+                            operation_id,
+                            GitOperationKind::Checkout,
+                            message,
+                            (
+                                Some(msg!("git.checkout_branch.detail")),
+                                None,
+                                Some(name.clone()),
+                            ),
+                            cx,
+                        ),
+                        Err(error) => this.fail_op(
+                            operation_id,
+                            GitOperationKind::Checkout,
+                            msg!("git.checkout_branch.failed", branch = &name),
+                            error_message(&error),
+                            (None, Some(name.clone()), true),
+                            cx,
+                        ),
                     }
+                    cx.notify();
                     Ok(())
                 })
             })?

@@ -151,7 +151,7 @@ impl Render for StashSaveDialog {
             ..accent_color
         };
 
-        let mut modal = div()
+        let backdrop = div()
             .id("stash-save-dialog-backdrop")
             .occlude()
             .absolute()
@@ -169,35 +169,31 @@ impl Render for StashSaveDialog {
             })
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.dismiss(cx);
-            }))
-            .child(
-                div()
-                    .id("stash-save-dialog-modal")
-                    .track_focus(&self.focus_handle)
-                    .map(|el| {
-                        keymap::bind_actions(
-                            el,
-                            "StashSaveDialog",
-                            &["Menu"],
-                            cx,
-                            Self::dispatch_command,
-                        )
-                    })
-                    .v_flex()
-                    .w(px(480.))
-                    .elevation_3(cx)
-                    .p(px(24.))
-                    .gap(px(20.))
-                    .rounded(px(12.))
-                    .on_click(|_: &ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                    }),
-            );
+            }));
+        let mut modal = div()
+            .id("stash-save-dialog-modal")
+            .debug_selector(|| "stash-card".into())
+            .track_focus(&self.focus_handle)
+            .map(|el| {
+                keymap::bind_actions(el, "StashSaveDialog", &["Menu"], cx, Self::dispatch_command)
+            })
+            .v_flex()
+            .w(px(480.))
+            .max_w((window.viewport_size().width - px(32.)).max(px(0.)))
+            .max_h((window.viewport_size().height - px(32.)).max(px(0.)))
+            .elevation_3(cx)
+            .p(px(24.))
+            .gap(px(20.))
+            .rounded(px(12.))
+            .on_click(|_: &ClickEvent, _, cx| {
+                cx.stop_propagation();
+            });
 
         // Header with icon and title
         modal = modal.child(
             div()
                 .id("stash-save-dialog-header")
+                .debug_selector(|| "stash-header".into())
                 .h_flex()
                 .gap_3()
                 .items_center()
@@ -226,6 +222,7 @@ impl Render for StashSaveDialog {
         modal = modal.child(
             div()
                 .id("stash-save-dialog-content")
+                .debug_selector(|| "stash-content".into())
                 .v_flex()
                 .gap_1()
                 .child(
@@ -254,6 +251,7 @@ impl Render for StashSaveDialog {
         modal = modal.child(
             div()
                 .id("stash-save-dialog-actions")
+                .debug_selector(|| "stash-actions".into())
                 .pt_2()
                 .border_t_1()
                 .border_color(colors.border_variant)
@@ -298,7 +296,7 @@ impl Render for StashSaveDialog {
             .top_0()
             .left_0()
             .size_full()
-            .child(modal)
+            .child(backdrop.child(modal))
             .into_any_element()
     }
 }
@@ -306,6 +304,29 @@ impl Render for StashSaveDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn stash_layout_keeps_all_content_inside_the_card(cx: &mut gpui::TestAppContext) {
+        cx.update(rgitui_theme::init);
+        let (dialog, cx) = cx.add_window_view(|_, cx| StashSaveDialog::new(cx));
+        cx.simulate_resize(gpui::size(px(800.), px(600.)));
+        dialog.update(cx, |dialog, cx| dialog.show_visible(cx));
+        cx.run_until_parked();
+        let card = cx.debug_bounds("stash-card").expect("储藏卡片");
+        let mut last_y = card.origin.y;
+        for selector in ["stash-header", "stash-content", "stash-actions"] {
+            let bounds = cx.debug_bounds(selector).expect(selector);
+            assert!(
+                bounds.origin.x >= card.origin.x && bounds.right() <= card.right(),
+                "{selector} 横向越过卡片"
+            );
+            assert!(
+                bounds.origin.y >= last_y && bounds.bottom() <= card.bottom(),
+                "{selector} 未在卡片内纵向排列"
+            );
+            last_y = bounds.bottom();
+        }
+    }
 
     #[test]
     fn stash_save_dialog_event_debug() {

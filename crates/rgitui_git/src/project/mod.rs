@@ -2,6 +2,8 @@ mod argsafe;
 mod auth;
 mod bisect;
 mod blame;
+mod branch_switch;
+pub use branch_switch::{branch_switch_state, BranchSwitchMode};
 #[cfg(feature = "perf")]
 mod census;
 mod diff;

@@ -44,6 +44,13 @@ impl Workspace {
             return;
         };
 
+        if update.kind == GitOperationKind::Checkout {
+            if let Some(branch) = update.branch_name.as_ref() {
+                self.request_branch_checkout(project, branch.clone(), cx);
+            }
+            return;
+        }
+
         // The checkout the operation actually ran in, carried on the update
         // itself. Resolving it here from what is being inspected *now* is
         // wrong whenever the failure arrives after the user has moved on —
@@ -83,14 +90,6 @@ impl Workspace {
                 } else {
                     proj.push_default_at(force, &worktree_path, cx).detach();
                     true
-                }
-            }
-            GitOperationKind::Checkout => {
-                if let Some(branch_name) = update.branch_name.as_deref() {
-                    proj.checkout_branch(branch_name, cx).detach();
-                    true
-                } else {
-                    false
                 }
             }
             GitOperationKind::Merge => {

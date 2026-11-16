@@ -789,6 +789,26 @@ pub(super) fn subscribe_confirm_dialog(
     cx.subscribe(
         confirm_dialog,
         |this, _cd, event: &ConfirmDialogEvent, cx| match event {
+            ConfirmDialogEvent::Confirmed(ConfirmAction::SwitchBranch {
+                repo_path, worktree_path, source, source_oid, target, bring_changes,
+            }) => {
+                let Some(project) = this.tabs.iter()
+                    .find(|tab| tab.project.read(cx).repo_path() == repo_path.as_path())
+                    .map(|tab| tab.project.clone()) else {
+                    this.show_toast(t!("branch_switch.closed"), ToastKind::Error, cx);
+                    return;
+                };
+                let mode = if *bring_changes {
+                    rgitui_git::BranchSwitchMode::BringChanges
+                } else {
+                    rgitui_git::BranchSwitchMode::LeaveChanges
+                };
+                project.update(cx, |project, cx| {
+                    project.checkout_branch_with_changes_at(
+                        target, worktree_path, mode, Some((source.clone(), *source_oid)), cx,
+                    ).detach();
+                });
+            }
             ConfirmDialogEvent::Confirmed(ConfirmAction::PullPreview(preview)) => {
                 let Some(project) = this
                     .tabs
@@ -1102,8 +1122,8 @@ pub(super) fn subscribe_confirm_dialog(
                             })
                             .detach();
                         }
-                        ConfirmAction::PullPreview(_) => unreachable!(
-                            "pull previews are handled before destructive confirmation actions"
+                        ConfirmAction::PullPreview(_) | ConfirmAction::SwitchBranch { .. } => unreachable!(
+                            "pull previews and branch switches are handled before destructive confirmations"
                         ),
                     }
                 }
@@ -2064,10 +2084,7 @@ pub(super) fn subscribe_sidebar(
                 });
             }
             SidebarEvent::BranchCheckout(name) => {
-                let name = name.clone();
-                project.update(cx, |proj, cx| {
-                    proj.checkout_branch(&name, cx).detach();
-                });
+                this.request_branch_checkout(project.clone(), name.clone(), cx);
             }
             SidebarEvent::RemoteFetch(name) => {
                 let name = name.clone();
@@ -2891,9 +2908,7 @@ pub(super) fn subscribe_graph(
                             );
                         }
                         CommitCheckout::Branch(branch) => {
-                            project.update(cx, |proj, cx| {
-                                proj.checkout_branch(&branch, cx).detach();
-                            });
+                            this.request_branch_checkout(project.clone(), branch, cx);
                         }
                         CommitCheckout::Detached => {
                             project.update(cx, |proj, cx| {
