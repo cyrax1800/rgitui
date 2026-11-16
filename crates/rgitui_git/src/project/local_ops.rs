@@ -1048,6 +1048,8 @@ impl GitProject {
         let commit_summary = message.lines().next().unwrap_or("").to_string();
         let worktree_path = worktree_path.to_path_buf();
         let refresh_repo_path = self.repo_path.clone();
+        let worktree_cache = self.refresh_caches.clone();
+        let author_filter = self.commit_author_filter.clone();
         let commit_limit = self.commit_limit;
         let branch_name = self.head_branch.clone();
         let operation_id = self.begin_operation(
@@ -1242,7 +1244,18 @@ impl GitProject {
                         repo.cleanup_state()?;
                     }
 
-                    let data = gather_refresh_data(&refresh_repo_path, commit_limit)?;
+                    // The commit changes the index and HEAD in this exact
+                    // checkout. Invalidate that worktree before gathering the
+                    // snapshot, otherwise the status cache can return the
+                    // pre-commit staged entries and leave them visible in the
+                    // Changes panel until a later watcher tick.
+                    worktree_cache.mark_worktree_status_dirty(&worktree_path);
+                    let data = gather_refresh_data_lightweight_cached(
+                        &refresh_repo_path,
+                        commit_limit,
+                        &worktree_cache,
+                        author_filter.as_deref(),
+                    )?;
                     Ok((oid, data))
                 })
                 .await;

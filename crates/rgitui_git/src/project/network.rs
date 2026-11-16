@@ -200,11 +200,24 @@ fn pending_merge_autostash(repo: &mut Repository) -> Result<Option<git2::Oid>> {
     Ok(autostash)
 }
 
+#[cfg(test)]
 fn head_contains_fetched_commit(repo: &Repository) -> Result<(git2::Oid, git2::Oid, bool)> {
     let head = repo.head()?.peel_to_commit()?.id();
     let fetched = repo.revparse_single("FETCH_HEAD")?.id();
     let integrated = head == fetched || repo.graph_descendant_of(head, fetched)?;
     Ok((head, fetched, integrated))
+}
+
+fn head_contains_remote_tracking_commit(
+    repo: &Repository,
+    remote: &str,
+    branch: &str,
+) -> Result<(git2::Oid, git2::Oid, bool)> {
+    let head = repo.head()?.peel_to_commit()?.id();
+    let reference = format!("refs/remotes/{remote}/{branch}");
+    let remote_tip = repo.find_reference(&reference)?.peel_to_commit()?.id();
+    let integrated = head == remote_tip || repo.graph_descendant_of(head, remote_tip)?;
+    Ok((head, remote_tip, integrated))
 }
 
 /// Attempt to recover a normal rejected push by incorporating the exact
@@ -350,11 +363,13 @@ fn push_with_auto_pull(
                 )
             })?;
 
-            // Distinguish a genuine concurrent remote push from a local
-            // integration problem. Git's FETCH_HEAD is what the pull merged,
-            // not necessarily the remote-tracking branch's previous tip.
+            // Verify against the remote-tracking ref that the pull just
+            // updated. FETCH_HEAD can contain multiple entries and can be
+            // replaced by another fetch, so it is not a stable destination
+            // identity for deciding whether the merge is complete.
             let repo = open_worktree_repo(worktree)?;
-            let (head, fetched, integrated) = head_contains_fetched_commit(&repo).map_err(|error| {
+            let (head, fetched, integrated) =
+                head_contains_remote_tracking_commit(&repo, remote, remote_branch).map_err(|error| {
                 anyhow::anyhow!(
                     "Automatic pull of {remote}/{remote_branch} reported success, but rgitui could not verify that the fetched commit was merged into the checked-out branch: {error}. Push was not retried."
                 )
@@ -388,28 +403,47 @@ fn push_with_auto_pull(
                 remote,
                 remote_branch
             );
-            let details = retry_result.map_err(|error| {
-                let remote_advanced = is_remote_ahead_rejection(&error.to_string());
-                log::warn!(
+            let details = match retry_result {
+                Ok(details) => details,
+                Err(error) if is_remote_ahead_rejection(&error.to_string()) => {
+                    // The remote advanced during the pull/retry window. Fetch
+                    // once more and retry only when that new remote tip is
+                    // already contained in our merge commit; otherwise a
+                    // second automatic merge would be an unbounded mutation.
+                    run_git_network_command(worktree, &["fetch", remote, remote_branch])?;
+                    let repo = open_worktree_repo(worktree)?;
+                    let (_, latest_remote, contained) =
+                        head_contains_remote_tracking_commit(&repo, remote, remote_branch)?;
+                    if !contained {
+                        return Err(anyhow::anyhow!(
+                            "Automatic pull of {remote}/{remote_branch} succeeded, but the remote advanced again to {latest_remote}. Resolve the new divergence and retry pushing."
+                        ));
+                    }
+                    run_git_network_command(worktree, args).map_err(|retry_error| {
+                        anyhow::anyhow!(
+                            "Automatic pull of {remote}/{remote_branch} succeeded, but the final push retry failed: {retry_error}"
+                        )
+                    })?
+                }
+                Err(error) => {
+                    let remote_advanced = is_remote_ahead_rejection(&error.to_string());
+                    log::warn!(
                     "push retry failed after successful automatic pull: remote_ahead={} total_elapsed={:?} worktree={}",
                     remote_advanced,
                     operation_started.elapsed(),
                     worktree.display()
                 );
-                if remote_advanced {
-                    anyhow::anyhow!(
-                        "Automatic pull of {remote}/{remote_branch} succeeded, but the retry push \
-                         was rejected as non-fast-forward. The remote may have advanced again \
-                         or the pulled branch differs from the push destination. \
-                         Inspect the branch history before retrying: {error}"
-                    )
-                } else {
-                    anyhow::anyhow!(
-                        "Automatic pull of {remote}/{remote_branch} succeeded, but the retry push \
-                         failed: {error}. Inspect the remote error and retry."
-                    )
+                    if remote_advanced {
+                        anyhow::bail!(
+                            "Automatic pull of {remote}/{remote_branch} succeeded, but the retry push was rejected as non-fast-forward: {error}"
+                        )
+                    } else {
+                        anyhow::bail!(
+                            "Automatic pull of {remote}/{remote_branch} succeeded, but the retry push failed: {error}. Inspect the remote error and retry."
+                        )
+                    }
                 }
-            })?;
+            };
             log::info!(
                 "push timing: auto-pull/retry operation completed in {:?} remote={} branch={}",
                 operation_started.elapsed(),
