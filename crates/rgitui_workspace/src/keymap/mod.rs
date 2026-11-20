@@ -37,7 +37,9 @@ use gpui::{App, Global, InvalidKeystrokeError, Keystroke, OperatingSystem};
 
 pub use display::{humanize_sequence, KeystrokeStyle};
 pub use loader::{ensure_keymap_file, keymap_path, keymap_stub};
-pub use registry::{actions, attach_actions, CommandId, CommandMeta, ALL_COMMANDS};
+pub use registry::{
+    actions, attach_actions, attach_actions_where, CommandId, CommandMeta, ALL_COMMANDS,
+};
 pub use summary::{
     CommandBindings, CommandGroup, EffectiveBinding, KeymapNote, KeymapSummary, NoteSeverity,
 };

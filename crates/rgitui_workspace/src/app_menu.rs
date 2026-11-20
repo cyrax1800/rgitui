@@ -52,14 +52,20 @@ fn show_about(cx: &mut App) {
     let ok = t!("menu.app.about_ok");
     handle
         .update(cx, |_, window, cx| {
-            // The answer carries nothing: there is only the one button.
-            let _ = window.prompt(
+            let answer = window.prompt(
                 PromptLevel::Info,
                 "rgitui",
                 Some(&detail),
                 &[ok.as_ref()],
                 cx,
             );
+            // The answer carries nothing, there being one button, but it is
+            // awaited rather than dropped so the prompt is not cancelled.
+            cx.background_executor()
+                .spawn(async move {
+                    answer.await.ok();
+                })
+                .detach();
         })
         .ok();
 }
@@ -92,8 +98,9 @@ pub fn app_menus() -> Vec<Menu> {
         Menu::new(t!("menu.view")).items([
             MenuItem::action(t!("menu.view.command_palette"), a::CommandPalette),
             MenuItem::separator(),
+            // Toggle Diff Mode is left out: its only binding is a bare
+            // Shift+D, and a menu key equivalent would fire it while typing.
             MenuItem::action(t!("menu.view.graph"), a::ToggleGraph),
-            MenuItem::action(t!("menu.view.diff_mode"), a::ToggleDiffMode),
             MenuItem::separator(),
             MenuItem::action(t!("menu.view.search"), a::Search),
             MenuItem::action(t!("menu.view.global_search"), a::GlobalSearch),

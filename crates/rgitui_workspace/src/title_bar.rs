@@ -6,6 +6,9 @@ use rgitui_ui::{
     Icon, IconName, IconSize, Label, LabelSize, Tooltip, WindowControl, WindowControlType,
 };
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 /// Height of the unified title row: the window's title bar and the
@@ -32,6 +35,13 @@ pub fn traffic_light_position() -> gpui::Point<gpui::Pixels> {
     )
 }
 
+/// Keeps a press on a control inside the window-chrome row from reaching the
+/// row, which would otherwise arm a window drag on it and count a double-click
+/// on a button as a double-click on the title bar.
+pub fn stop_chrome_drag<E: gpui::InteractiveElement>(element: E) -> E {
+    element.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+}
+
 /// The window-chrome row that hosts the title and toolbar.
 ///
 /// The window uses a transparent title bar, so this row is what the user grabs
@@ -56,9 +66,14 @@ pub fn window_chrome_row(window: &mut Window, cx: &mut App) -> gpui::Stateful<gp
         return row;
     }
 
-    // Armed on a press inside the row and spent on the first move, so a click
-    // on a toolbar button is still a click and only a drag moves the window.
-    let drag_armed = window.use_keyed_state("window-chrome-drag", cx, |_, _| false);
+    // Armed on a press on the row's own background and spent on the first
+    // move. Controls inside the row stop their presses from reaching it (see
+    // [`stop_chrome_drag`]), so a click on a button stays a click. A plain cell
+    // rather than entity state, so arming it redraws nothing.
+    let drag_armed = window
+        .use_keyed_state("window-chrome-drag", cx, |_, _| Rc::new(Cell::new(false)))
+        .read(cx)
+        .clone();
     let arm = drag_armed.clone();
     let disarm_up = drag_armed.clone();
     let disarm_out = drag_armed.clone();
@@ -67,18 +82,11 @@ pub fn window_chrome_row(window: &mut Window, cx: &mut App) -> gpui::Stateful<gp
         .when(!window.is_fullscreen(), |row| {
             row.pl(px(TRAFFIC_LIGHT_PADDING))
         })
-        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
-            arm.write(cx, true);
-        })
-        .on_mouse_up(gpui::MouseButton::Left, move |_, _, cx| {
-            disarm_up.write(cx, false);
-        })
-        .on_mouse_down_out(move |_, _, cx| {
-            disarm_out.write(cx, false);
-        })
-        .on_mouse_move(move |_, window, cx| {
-            if *drag_armed.read(cx) {
-                drag_armed.write(cx, false);
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| arm.set(true))
+        .on_mouse_up(gpui::MouseButton::Left, move |_, _, _| disarm_up.set(false))
+        .on_mouse_down_out(move |_, _, _| disarm_out.set(false))
+        .on_mouse_move(move |_, window, _| {
+            if drag_armed.replace(false) {
                 window.start_window_move();
             }
         })
@@ -164,9 +172,10 @@ impl RenderOnce for TitleBar {
             self.branch_name.clone()
         };
 
-        let mut branch_pill = div()
-            .id("title-branch-pill")
+        let mut branch_pill = stop_chrome_drag(div().id("title-branch-pill"))
             .h_flex()
+            .min_w_0()
+            .max_w(px(240.))
             .h(px(22.))
             .px(px(8.))
             .gap(px(4.))
@@ -252,6 +261,8 @@ impl RenderOnce for TitleBar {
                 div()
                     .h_flex()
                     .gap(px(5.))
+                    .min_w_0()
+                    .max_w(px(200.))
                     .items_center()
                     .child(
                         Icon::new(IconName::Folder)
@@ -261,7 +272,8 @@ impl RenderOnce for TitleBar {
                     .child(
                         Label::new(self.repo_name)
                             .size(LabelSize::Small)
-                            .weight(gpui::FontWeight::SEMIBOLD),
+                            .weight(gpui::FontWeight::SEMIBOLD)
+                            .truncate(),
                     ),
             )
             .child(Self::render_separator(&colors))

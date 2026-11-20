@@ -167,9 +167,21 @@ impl Workspace {
             .font(ui_font)
             .bg(background);
 
-        root = keymap::attach_actions(root, "Workspace", cx, |workspace, cmd, window, cx| {
-            workspace.dispatch_command(cmd, window, cx);
-        });
+        // While a modal is up only the commands whose bindings stay live over
+        // one get a handler. The keymap already holds the others back, but the
+        // native menu bar fires an item's action regardless of its binding's
+        // context, so without this Cmd+W or Cmd+Z in a dialog would close a
+        // tab or stash behind it.
+        let modal = self.any_overlay_active(cx);
+        root = keymap::attach_actions_where(
+            root,
+            "Workspace",
+            cx,
+            |cmd| !modal || cmd.runs_over_modal(),
+            |workspace, cmd, window, cx| {
+                workspace.dispatch_command(cmd, window, cx);
+            },
+        );
         root = keymap::attach_actions(root, "GraphView", cx, |workspace, cmd, window, cx| {
             workspace.dispatch_graph_command(cmd, window, cx);
         });
@@ -296,8 +308,20 @@ impl Render for Workspace {
 
         // If no tabs, show welcome screen
         if self.tabs.is_empty() {
+            // The home screen has no panel to focus, and with focus nowhere in
+            // the workspace gpui resolves actions from above its handlers:
+            // every shortcut and every menu item would be dead. The root takes
+            // focus itself until an overlay claims it.
+            let home_focus = window
+                .use_keyed_state("workspace-home-focus", cx, |_, cx| cx.focus_handle())
+                .read(cx)
+                .clone();
+            if !self.any_overlay_active(cx) && !home_focus.contains_focused(window, cx) {
+                home_focus.focus(window, cx);
+            }
             let root = self.workspace_root(cx, ui_font.clone(), colors.background);
             return root
+                .track_focus(&home_focus)
                 .v_flex()
                 .child(crate::window_chrome_row(window, cx))
                 .child(
@@ -467,7 +491,10 @@ impl Render for Workspace {
         // divergence counts whenever a worktree is being inspected.
         let (ahead, behind) = super::events::active_branch_ahead_behind(active_tab, project);
 
-        let show_tab_bar = self.tabs.len() > 1;
+        // On macOS the tab bar shows only once there is a second repository,
+        // as native tab bars do; its Home and Open buttons live in the File
+        // menu there. Other platforms have no menu bar to hold them.
+        let show_tab_bar = self.tabs.len() > 1 || !cfg!(target_os = "macos");
         let mut tab_bar = TabBar::new();
         let workspace_handle = cx.entity().downgrade();
         for (i, tab) in self.tabs.iter().enumerate() {
@@ -775,8 +802,6 @@ impl Render for Workspace {
                 )
             })
             .when_some(detached_head_banner, |el, banner| el.child(banner))
-            // Like a native macOS tab bar, shown only once there is a second
-            // repository to switch to. File > Open Repository adds one.
             .when(show_tab_bar, |el| el.child(tab_bar))
             // Main content area — drag_move listeners live here so they fire globally
             .child({

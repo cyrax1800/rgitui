@@ -79,7 +79,7 @@ The file is reloaded when you save it. Bindings you add win over the defaults. T
 | _unbound_ | — | `rgitui::CloneRepo` | Clone a remote repository. |
 | `ctrl-h` | `Workspace && !modal` | `rgitui::WorkspaceHome` | Close every tab and return to the workspace home screen. |
 | _unbound_ | — | `rgitui::RestoreLastWorkspace` | Reopen the most recently saved workspace. |
-| `?` | `Workspace && !TextInput` | `rgitui::Shortcuts` | Show the keyboard shortcut reference. |
+| `secondary-/` or `?` | `Workspace` or `Workspace && !TextInput` | `rgitui::Shortcuts` | Show the keyboard shortcut reference. |
 | `secondary-shift-b` | `Workspace && !modal` | `rgitui::SwitchBranch` | Focus the sidebar to switch branches. |
 | _unbound_ | — | `rgitui::SwitchToPreviousBranch` | Check out the branch HEAD was on before, like `git switch -`. |
 | _unbound_ | — | `rgitui::Blame` | Blame the selected file. |

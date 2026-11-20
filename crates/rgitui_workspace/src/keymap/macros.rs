@@ -287,10 +287,28 @@ macro_rules! commands {
             E: gpui::InteractiveElement,
             V: 'static,
         {
+            attach_actions_where(element, view, cx, |_| true, dispatch)
+        }
+
+        /// [`attach_actions`] for only the commands `include` accepts. A
+        /// command left out has no handler on this element, so gpui reports it
+        /// unavailable: the native menu greys it out.
+        pub fn attach_actions_where<E, V>(
+            element: E,
+            view: &str,
+            cx: &mut gpui::Context<V>,
+            include: impl Fn(CommandId) -> bool,
+            dispatch: fn(&mut V, CommandId, &mut gpui::Window, &mut gpui::Context<V>),
+        ) -> E
+        where
+            E: gpui::InteractiveElement,
+            V: 'static,
+        {
             let mut element = element;
             $(
                 if view == stringify!($view) {
                     $(
+                        if include(CommandId::$name) {
                         element = element.on_action(cx.listener(
                             move |view, _: &actions::$name, window, cx| {
                                 $crate::perf::note_dispatch(
@@ -300,6 +318,7 @@ macro_rules! commands {
                                 dispatch(view, CommandId::$name, window, cx);
                             },
                         ));
+                        }
                     )*
                 }
             )*

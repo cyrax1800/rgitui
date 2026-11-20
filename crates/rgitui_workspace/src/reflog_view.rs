@@ -367,6 +367,9 @@ impl Render for ReflogView {
         div()
             .id("reflog-view")
             .track_focus(&self.focus_handle)
+            // Code, hashes and line numbers line up in columns, so this view
+            // keeps a monospace face whatever the interface font is.
+            .font_family("Lilex")
             .map(|el| {
                 keymap::bind_actions(
                     el,

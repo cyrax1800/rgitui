@@ -348,6 +348,9 @@ impl Render for GlobalSearchView {
             .overflow_hidden()
             .bg(colors.editor_background)
             .track_focus(&self.focus_handle)
+            // Code, hashes and line numbers line up in columns, so this view
+            // keeps a monospace face whatever the interface font is.
+            .font_family("Lilex")
             .map(|el| {
                 keymap::bind_actions(
                     el,

@@ -561,8 +561,17 @@ impl Render for Toolbar {
             .px(px(8.))
             .items_center()
             .justify_between()
-            .child(left)
-            .child(right)
+            // A narrow window clips the end of the left group (Create PR, the
+            // stash buttons) rather than pushing the right-hand group past the
+            // window; Fetch, Pull and Push lead the group and stay visible.
+            .overflow_hidden()
+            .child(
+                crate::stop_chrome_drag(left)
+                    .min_w_0()
+                    .flex_shrink(1.)
+                    .overflow_hidden(),
+            )
+            .child(crate::stop_chrome_drag(right).flex_shrink_0())
     }
 }
 

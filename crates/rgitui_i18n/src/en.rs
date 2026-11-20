@@ -681,7 +681,6 @@ english_messages! {
     "menu.view" => "View",
     "menu.view.branch_health" => "Branch Health",
     "menu.view.command_palette" => "Command Palette…",
-    "menu.view.diff_mode" => "Toggle Diff Mode",
     "menu.view.global_search" => "Search Working Tree…",
     "menu.view.graph" => "Toggle Graph",
     "menu.view.issues" => "Issues",

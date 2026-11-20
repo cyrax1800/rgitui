@@ -151,7 +151,9 @@ commands! {
         /// Reopen the most recently saved workspace.
         RestoreLastWorkspace unbound;
         /// Show the keyboard shortcut reference.
-        Shortcuts "?" in "Workspace && !TextInput";
+        // The primary-modifier chord comes first so the menu bar, which shows
+        // a command's first binding, offers it rather than a bare `?`.
+        Shortcuts ["secondary-/" in "Workspace", "?" in "Workspace && !TextInput"];
         /// Focus the sidebar to switch branches.
         SwitchBranch "secondary-shift-b";
         /// Check out the branch HEAD was on before, like `git switch -`.
@@ -674,6 +676,22 @@ impl CommandId {
             .find(|meta| meta.id == self)
             // Unreachable: `ALL_COMMANDS` and `CommandId` are generated together.
             .expect("every CommandId has metadata")
+    }
+
+    /// Whether this command may run while a modal overlay or dialog is open.
+    ///
+    /// True when the command has default bindings and none of them stands down
+    /// under `modal`. An unbound command takes its view's context, which for
+    /// the workspace excludes `modal`, so it may not. The workspace attaches a
+    /// handler only for these while a modal is up: the native menu bar fires
+    /// an item's action whatever its binding's context says, and a missing
+    /// handler is what greys the item out and keeps its shortcut inert.
+    pub fn runs_over_modal(self) -> bool {
+        let bindings = self.default_bindings();
+        !bindings.is_empty()
+            && bindings
+                .iter()
+                .all(|(_, context)| !context.contains("!modal"))
     }
 
     /// This command's default bindings, or an empty slice when it has none.
