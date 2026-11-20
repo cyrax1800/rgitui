@@ -8,6 +8,7 @@ use rgitui_ui::{
 
 use crate::keymap;
 use crate::CommandId;
+use rgitui_i18n::{key, t};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoteDialogEvent {
@@ -28,9 +29,7 @@ pub enum RemoteDialogEvent {
 #[derive(Clone)]
 enum RemoteDialogMode {
     Add,
-    Edit {
-        old_name: String,
-    },
+    Edit { old_name: String },
 }
 
 pub struct RemoteDialog {
@@ -55,7 +54,7 @@ impl RemoteDialog {
         });
         let url_editor = cx.new(|cx| {
             let mut editor = TextInput::new(cx);
-            editor.set_placeholder("https://example.com/repository.git 或本地路径");
+            editor.set_placeholder_message(key!("remote_dialog.url_placeholder"));
             editor
         });
         for editor in [&name_editor, &url_editor] {
@@ -149,7 +148,7 @@ impl RemoteDialog {
         }
         let url = self.url_editor.read(cx).text().trim().to_string();
         if url.is_empty() {
-            self.error = Some("远程地址不能为空".to_string());
+            self.error = Some(t!("remote_dialog.error.url_empty").to_string());
             cx.notify();
             return;
         }
@@ -157,7 +156,7 @@ impl RemoteDialog {
             RemoteDialogMode::Add => {
                 let name = self.name_editor.read(cx).text().trim().to_string();
                 if name.is_empty() {
-                    self.error = Some("远程名称不能为空".to_string());
+                    self.error = Some(t!("remote_dialog.error.name_empty").to_string());
                     cx.notify();
                     return;
                 }
@@ -170,16 +169,16 @@ impl RemoteDialog {
             RemoteDialogMode::Edit { old_name } => {
                 let name = self.name_editor.read(cx).text().trim().to_string();
                 if name.is_empty() {
-                    self.error = Some("远程名称不能为空".to_string());
+                    self.error = Some(t!("remote_dialog.error.name_empty").to_string());
                     cx.notify();
                     return;
                 }
                 RemoteDialogEvent::Edit {
-                old_name: old_name.clone(),
-                name,
-                url,
-                is_default: self.is_default,
-            }
+                    old_name: old_name.clone(),
+                    name,
+                    url,
+                    is_default: self.is_default,
+                }
             }
         };
         self.submitting = true;
@@ -213,9 +212,21 @@ impl Render for RemoteDialog {
         }
         let colors = cx.colors().clone();
         let is_add = matches!(self.mode, RemoteDialogMode::Add);
-        let title = if is_add { "添加远程仓库" } else { "修改远程地址" };
-        let submit_label = if is_add { "添加远程" } else { "更新地址" };
-        let submit_icon = if is_add { IconName::Plus } else { IconName::Edit };
+        let title = if is_add {
+            t!("remote_dialog.title.add")
+        } else {
+            t!("remote_dialog.title.edit")
+        };
+        let submit_label = if is_add {
+            t!("remote_dialog.submit.add")
+        } else {
+            t!("remote_dialog.submit.edit")
+        };
+        let submit_icon = if is_add {
+            IconName::Plus
+        } else {
+            IconName::Edit
+        };
 
         let mut modal = div()
             .id("remote-dialog-backdrop")
@@ -239,9 +250,13 @@ impl Render for RemoteDialog {
                     .border_1()
                     .border_color(colors.border_variant)
                     .rounded(px(6.))
-                    .child(Label::new(title).size(LabelSize::Large).color(Color::Default))
-                    .child(self.field("远程名称", self.name_editor.clone()))
-                    .child(self.field("URL / 路径", self.url_editor.clone()))
+                    .child(
+                        Label::new(title)
+                            .size(LabelSize::Large)
+                            .color(Color::Default),
+                    )
+                    .child(self.field(t!("remote_dialog.name"), self.name_editor.clone()))
+                    .child(self.field(t!("remote_dialog.url"), self.url_editor.clone()))
                     .child(
                         div()
                             .h_flex()
@@ -256,19 +271,25 @@ impl Render for RemoteDialog {
                                         CheckState::Unchecked
                                     },
                                 )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.is_default = !this.is_default;
-                                    cx.notify();
-                                })),
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.is_default = !this.is_default;
+                                        cx.notify();
+                                    },
+                                )),
                             )
                             .child(
-                                Label::new("设为默认远端")
+                                Label::new(t!("remote_dialog.set_default"))
                                     .size(LabelSize::Small)
                                     .color(Color::Default),
                             ),
                     )
                     .when_some(self.error.clone(), |el, error| {
-                        el.child(Label::new(SharedString::from(error)).size(LabelSize::Small).color(Color::Error))
+                        el.child(
+                            Label::new(SharedString::from(error))
+                                .size(LabelSize::Small)
+                                .color(Color::Error),
+                        )
                     })
                     .child(
                         div()
@@ -279,7 +300,7 @@ impl Render for RemoteDialog {
                             .border_t_1()
                             .border_color(colors.border_variant)
                             .child(
-                                Button::new("remote-dialog-cancel", "取消")
+                                Button::new("remote-dialog-cancel", t!("common.cancel"))
                                     .size(ButtonSize::Default)
                                     .style(ButtonStyle::Subtle)
                                     .on_click(cx.listener(|this, _, _, cx| this.hide(cx))),
@@ -308,7 +329,7 @@ impl Render for RemoteDialog {
 }
 
 impl RemoteDialog {
-    fn field<T: IntoElement>(&self, label: &'static str, editor: T) -> gpui::Div {
+    fn field<T: IntoElement>(&self, label: SharedString, editor: T) -> gpui::Div {
         div()
             .h_flex()
             .gap(px(8.))

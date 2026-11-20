@@ -353,7 +353,7 @@ impl Render for SubmoduleView {
                                 )
                                 .size(ButtonSize::Compact)
                                 .color(Color::Accent)
-                                .tooltip("初始化子模块")
+                                .tooltip(t!("submodules.init.tooltip"))
                                 .on_click(move |_, _, cx| {
                                     view.update(cx, |_, cx| {
                                         cx.emit(SubmoduleViewEvent::InitSubmodule(name.clone()))
@@ -370,7 +370,7 @@ impl Render for SubmoduleView {
                                 )
                                 .size(ButtonSize::Compact)
                                 .color(Color::Muted)
-                                .tooltip("更新子模块")
+                                .tooltip(t!("submodules.update.tooltip"))
                                 .on_click(move |_, _, cx| {
                                     view.update(cx, |_, cx| {
                                         cx.emit(SubmoduleViewEvent::UpdateSubmodule(name.clone()))
@@ -436,7 +436,7 @@ impl Render for SubmoduleView {
                         IconButton::new("submodules-update-all", IconName::Refresh)
                             .size(ButtonSize::Compact)
                             .color(Color::Muted)
-                            .tooltip("更新全部子模块")
+                            .tooltip(t!("submodules.update_all.tooltip"))
                             .on_click(move |_, _, cx| {
                                 view.update(cx, |_, cx| cx.emit(SubmoduleViewEvent::UpdateAll))
                                     .ok();

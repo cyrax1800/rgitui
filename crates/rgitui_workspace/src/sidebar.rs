@@ -2874,7 +2874,7 @@ impl Render for Sidebar {
                     IconButton::new("remote-add", IconName::Plus)
                         .size(ButtonSize::Compact)
                         .color(Color::Info)
-                        .tooltip("添加远程仓库")
+                        .tooltip(t!("sidebar.remote.add.tooltip"))
                         .on_click(cx.listener(|_, _: &ClickEvent, _, cx| {
                             cx.emit(SidebarEvent::RemoteAdd);
                         })),
@@ -2983,7 +2983,7 @@ impl Render for Sidebar {
                                         )
                                         .when(is_default, |el| {
                                             el.child(
-                                                Label::new("默认")
+                                                Label::new(t!("sidebar.remote.default"))
                                                     .size(LabelSize::XSmall)
                                                     .color(Color::Accent),
                                             )
@@ -3020,7 +3020,7 @@ impl Render for Sidebar {
                                             )
                                             .size(ButtonSize::Compact)
                                             .color(Color::Muted)
-                                            .tooltip("修改远程地址")
+                                            .tooltip(t!("sidebar.remote.edit.tooltip"))
                                             .on_click(
                                                 move |_: &ClickEvent, _, cx: &mut App| {
                                                     let _ = w_edit.clone().update(cx, |_, cx| {
@@ -4175,7 +4175,7 @@ impl Render for Sidebar {
                         .color(Color::Muted),
                 )
                 .child(
-                    Label::new("子模块")
+                    Label::new(t!("submodules.title"))
                         .size(LabelSize::XSmall)
                         .weight(gpui::FontWeight::SEMIBOLD)
                         .color(Color::Muted),
@@ -4185,7 +4185,7 @@ impl Render for Sidebar {
                     IconButton::new("add-submodule", IconName::Plus)
                         .size(ButtonSize::Compact)
                         .color(Color::Muted)
-                        .tooltip("添加子模块")
+                        .tooltip(t!("submodules.add"))
                         .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                             add_submodule_sidebar
                                 .update(cx, |_, cx| cx.emit(SidebarEvent::AddSubmodule))
@@ -4219,7 +4219,7 @@ impl Render for Sidebar {
                         .px(px(16.))
                         .items_center()
                         .child(
-                            Label::new("没有子模块")
+                            Label::new(t!("submodules.empty"))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Placeholder),
                         ),
@@ -5403,19 +5403,19 @@ impl Render for Sidebar {
                     }));
                 menu = menu.child(action(
                     "submodule-menu-open",
-                    "打开子模块".into(),
+                    t!("submodules.open"),
                     SidebarEvent::OpenSubmodule(path.clone()),
                     weak.clone(),
                 ));
                 menu = menu.child(action(
                     "submodule-menu-remove",
-                    "删除子模块".into(),
+                    t!("submodules.remove"),
                     SidebarEvent::RemoveSubmodule(path.clone()),
                     weak.clone(),
                 ));
                 menu = menu.child(action(
                     "submodule-menu-url",
-                    "更改源地址…".into(),
+                    t!("submodules.change_url"),
                     SidebarEvent::ChangeSubmoduleUrl { name, path, url },
                     weak,
                 ));

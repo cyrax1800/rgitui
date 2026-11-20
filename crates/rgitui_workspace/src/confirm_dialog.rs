@@ -169,7 +169,7 @@ impl ConfirmDialog {
             Some(ConfirmAction::AbortOperation(_)) => t!("common.abort"),
             Some(ConfirmAction::ForcePush) => t!("confirm.force_push"),
             Some(ConfirmAction::WorktreeRemove(_)) => t!("confirm.remove_worktree"),
-            Some(ConfirmAction::SubmoduleRemove { .. }) => "删除子模块".into(),
+            Some(ConfirmAction::SubmoduleRemove { .. }) => t!("submodules.remove"),
             None => t!("confirm.confirm"),
         }
     }
@@ -177,7 +177,9 @@ impl ConfirmDialog {
     /// The title and warning for `action`, in the active language.
     fn text(action: &ConfirmAction) -> (SharedString, SharedString) {
         match action {
-            ConfirmAction::SwitchBranch { .. } => (t!("branch_switch.title"), t!("branch_switch.body")),
+            ConfirmAction::SwitchBranch { .. } => {
+                (t!("branch_switch.title"), t!("branch_switch.body"))
+            }
             ConfirmAction::PullPreview(preview) => (
                 t!("confirm.title.pull_preview"),
                 t!(
@@ -274,11 +276,8 @@ impl ConfirmDialog {
                 t!("confirm.body.remove_worktree", path = path),
             ),
             ConfirmAction::SubmoduleRemove { name, path } => (
-                "删除子模块".into(),
-                format!(
-                    "将从仓库移除子模块 {name} ({path})。如果子模块含有本地修改，Git 会拒绝删除。"
-                )
-                .into(),
+                t!("submodules.remove"),
+                t!("submodules.remove.body", name = name, path = path),
             ),
         }
     }

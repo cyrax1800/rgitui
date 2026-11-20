@@ -1,8 +1,6 @@
 use gpui::prelude::*;
-use gpui::{
-    div, px, Context, ElementId, Entity, EventEmitter, Render, SharedString, Window,
-};
-use rgitui_i18n::t;
+use gpui::{div, px, Context, ElementId, Entity, EventEmitter, Render, SharedString, Window};
+use rgitui_i18n::{key, t};
 use rgitui_theme::{ActiveTheme, Color, StyledExt};
 use rgitui_ui::{
     Button, ButtonSize, ButtonStyle, CheckState, Checkbox, IconName, Label, LabelSize, TextInput,
@@ -62,7 +60,7 @@ impl AddSubmoduleDialog {
         });
         let branch_editor = cx.new(|cx| {
             let mut editor = TextInput::new(cx);
-            editor.set_placeholder("main (optional)");
+            editor.set_placeholder_message(key!("submodules.dialog.branch_placeholder"));
             editor
         });
         for editor in [&url_editor, &path_editor, &branch_editor] {
@@ -238,22 +236,24 @@ impl Render for AddSubmoduleDialog {
                     .rounded(px(6.))
                     .child(
                         Label::new(match self.mode {
-                            SubmoduleDialogMode::Add => "添加子模块",
-                            SubmoduleDialogMode::ChangeUrl { .. } => "更改子模块源地址",
+                            SubmoduleDialogMode::Add => t!("submodules.add"),
+                            SubmoduleDialogMode::ChangeUrl { .. } => {
+                                t!("submodules.change_url.title")
+                            }
                         })
                         .size(LabelSize::Large)
                         .color(Color::Default),
                     )
-                    .child(self.field("源路径 / URL", self.url_editor.clone()))
+                    .child(self.field(t!("submodules.dialog.url"), self.url_editor.clone()))
                     .when(matches!(self.mode, SubmoduleDialogMode::Add), |el| {
-                        el.child(self.field("本地相关路径", self.path_editor.clone()))
+                        el.child(self.field(t!("submodules.dialog.path"), self.path_editor.clone()))
                             .child(
                                 div()
                                     .h_flex()
                                     .gap(px(8.))
                                     .items_center()
                                     .child(
-                                        Label::new("源分支")
+                                        Label::new(t!("submodules.dialog.branch"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     )
@@ -281,7 +281,7 @@ impl Render for AddSubmoduleDialog {
                                         ),
                                     )
                                     .child(
-                                        Label::new("递归子模块")
+                                        Label::new(t!("submodules.dialog.recursive"))
                                             .size(LabelSize::Small)
                                             .color(Color::Default),
                                     ),
@@ -312,8 +312,10 @@ impl Render for AddSubmoduleDialog {
                                 Button::new(
                                     "add-submodule-submit",
                                     match self.mode {
-                                        SubmoduleDialogMode::Add => "添加子模块",
-                                        SubmoduleDialogMode::ChangeUrl { .. } => "更新源地址",
+                                        SubmoduleDialogMode::Add => t!("submodules.add"),
+                                        SubmoduleDialogMode::ChangeUrl { .. } => {
+                                            t!("submodules.change_url.submit")
+                                        }
                                     },
                                 )
                                 .icon(IconName::Plus)
@@ -338,7 +340,7 @@ impl Render for AddSubmoduleDialog {
 }
 
 impl AddSubmoduleDialog {
-    fn field(&self, label: &'static str, editor: Entity<TextInput>) -> gpui::Div {
+    fn field(&self, label: SharedString, editor: Entity<TextInput>) -> gpui::Div {
         div()
             .h_flex()
             .gap(px(8.))

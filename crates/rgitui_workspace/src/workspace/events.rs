@@ -80,7 +80,7 @@ pub(super) fn subscribe_add_submodule_dialog(
                     let _ = this.update(cx, |workspace, cx| match result {
                         Ok(()) => {
                             workspace.show_toast(
-                                "子模块操作完成".to_string(),
+                                t!("workspace.submodule.done"),
                                 ToastKind::Success,
                                 cx,
                             );
@@ -150,7 +150,7 @@ pub(super) fn subscribe_remote_dialog(cx: &mut Context<Workspace>, dialog: &Enti
                 let _ = dialog.update(cx, |dialog, cx| dialog.on_finished(result.clone(), cx));
                 let _ = this.update(cx, |workspace, cx| match result {
                     Ok(()) => {
-                        workspace.show_toast("远程仓库已更新".to_string(), ToastKind::Success, cx)
+                        workspace.show_toast(t!("workspace.remote.updated"), ToastKind::Success, cx)
                     }
                     Err(error) => workspace.show_toast(error, ToastKind::Error, cx),
                 });
@@ -1098,7 +1098,7 @@ pub(super) fn subscribe_confirm_dialog(
                                         });
                                         let _ = this.update(cx, |workspace, cx| {
                                             workspace.show_toast(
-                                                "子模块已删除".to_string(),
+                                                t!("workspace.submodule.removed"),
                                                 ToastKind::Success,
                                                 cx,
                                             );
@@ -1764,12 +1764,16 @@ pub(super) fn subscribe_sidebar(
                 };
                 match this.open_repo(path.clone(), cx) {
                     Ok(()) => this.show_toast(
-                        format!("已打开子模块 {}", path.display()),
+                        t!("workspace.submodule.opened", path = path.display().to_string()),
                         ToastKind::Success,
                         cx,
                     ),
                     Err(error) => {
-                        this.show_toast(format!("无法打开子模块: {error}"), ToastKind::Error, cx)
+                        this.show_toast(
+                            t!("workspace.submodule.open_failed", error = error.to_string()),
+                            ToastKind::Error,
+                            cx,
+                        )
                     }
                 }
             }
@@ -4104,7 +4108,7 @@ pub(super) fn subscribe_submodule_view(
                                 });
                             }
                             workspace.show_toast(
-                                "子模块操作完成".to_string(),
+                                t!("workspace.submodule.done"),
                                 ToastKind::Success,
                                 cx,
                             );
