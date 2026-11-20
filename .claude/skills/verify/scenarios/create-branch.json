@@ -1,0 +1,14 @@
+{
+  "name": "create-branch",
+  "description": "Cmd+B opens the branch dialog with its name field focused; type a name, Enter creates it at HEAD without checking it out. Proof: refs/heads/verify/topic points at main's tip, HEAD still main.",
+  "steps": [
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 60000}},
+    {"resize": {"width": 1280, "height": 800}},
+    {"key": {"key": "secondary-b", "settle": "frame"}},
+    {"type": {"text": "verify/topic"}},
+    {"screenshot": {"screenshot": "dialog-filled"}},
+    {"key": {"key": "enter", "settle": "frame"}},
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 30000}},
+    {"screenshot": {"screenshot": "created"}}
+  ]
+}

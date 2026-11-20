@@ -1,0 +1,17 @@
+{
+  "name": "commit",
+  "description": "Stage the fixture's two changes, type a summary into the commit panel, commit. Proof: HEAD is 'Verify commit' with notes.txt and src/main.rs, tree clean.",
+  "steps": [
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 60000}},
+    {"resize": {"width": 1280, "height": 800}},
+    {"screenshot": {"screenshot": "before"}},
+    {"action": {"action": "rgitui::StageAll", "settle": "frame"}},
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 30000}},
+    {"click": {"x": 1069, "y": 556}},
+    {"type": {"text": "Verify commit"}},
+    {"screenshot": {"screenshot": "typed"}},
+    {"action": {"action": "rgitui::Commit", "settle": "frame"}},
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 30000}},
+    {"screenshot": {"screenshot": "committed"}}
+  ]
+}

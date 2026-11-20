@@ -1,0 +1,9 @@
+{
+  "name": "doctor",
+  "description": "Opens the fixture, pins the window size, captures one frame. Passing proves: the perf-capture build exists, the window can be kept visible, the workspace renders, the first refresh finishes, and screenshots work.",
+  "steps": [
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 60000}},
+    {"resize": {"width": 1280, "height": 800}},
+    {"screenshot": {"screenshot": "doctor"}}
+  ]
+}

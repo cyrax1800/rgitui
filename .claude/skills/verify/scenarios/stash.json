@@ -1,0 +1,14 @@
+{
+  "name": "stash",
+  "description": "Cmd+Z opens the stash dialog with its message field focused; type a message, Enter stashes the dirty tree. Proof: stash@{0} carries the message, src/main.rs is back to HEAD; untracked notes.txt stays (the dialog has no include-untracked option).",
+  "steps": [
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 60000}},
+    {"resize": {"width": 1280, "height": 800}},
+    {"key": {"key": "secondary-z", "settle": "frame"}},
+    {"type": {"text": "verify stash"}},
+    {"screenshot": {"screenshot": "dialog-filled"}},
+    {"key": {"key": "enter", "settle": "frame"}},
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 30000}},
+    {"screenshot": {"screenshot": "stashed"}}
+  ]
+}
