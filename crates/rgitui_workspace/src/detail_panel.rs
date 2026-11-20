@@ -194,7 +194,6 @@ struct CachedFileDiffTree {
 struct CachedFlatRow {
     file_index: usize,
     file_name: SharedString,
-    dir_path: SharedString,
     additions: usize,
     deletions: usize,
     icon_name: IconName,
@@ -367,23 +366,9 @@ fn build_cached_file_tree(files: &[FileDiff]) -> CachedFileDiffTree {
                 .unwrap_or(&path_str)
                 .to_string()
                 .into();
-            let dir_path: SharedString = file
-                .path
-                .parent()
-                .map(|p| {
-                    let s = p.display().to_string();
-                    if s.is_empty() {
-                        s
-                    } else {
-                        format!("{}/", s)
-                    }
-                })
-                .unwrap_or_default()
-                .into();
             CachedFlatRow {
                 file_index: i,
                 file_name,
-                dir_path,
                 additions: file.additions,
                 deletions: file.deletions,
                 icon_name: file_change_icon(file.kind),
@@ -2197,7 +2182,6 @@ mod census {
     impl HeapSize for CachedFlatRow {
         fn heap_size(&self, census: &mut Census) -> usize {
             self.file_name.heap_size(census)
-                + self.dir_path.heap_size(census)
                 + self.change_code.heap_size(census)
         }
     }
@@ -2637,7 +2621,6 @@ mod tests {
         let row = &cached.flat_rows[0];
         assert_eq!(row.file_index, 0);
         assert_eq!(row.file_name.as_str(), "main.rs");
-        assert_eq!(row.dir_path.as_str(), "src/");
         assert_eq!(row.additions, 10);
         assert_eq!(row.deletions, 5);
     }
@@ -2649,7 +2632,6 @@ mod tests {
         assert_eq!(cached.flat_rows.len(), 1);
         let row = &cached.flat_rows[0];
         assert_eq!(row.file_name.as_str(), "Cargo.toml");
-        assert!(row.dir_path.is_empty());
     }
 
     #[test]
@@ -2661,7 +2643,6 @@ mod tests {
         let cached = build_cached_file_tree(&files);
         let row = &cached.flat_rows[0];
         assert_eq!(row.file_name.as_str(), "panel.rs");
-        assert_eq!(row.dir_path.as_str(), "crates/rgitui_workspace/src/");
     }
 
     #[test]
@@ -2712,10 +2693,6 @@ mod tests {
         let cached = build_cached_file_tree(&files);
         let row = &cached.flat_rows[0];
         assert_eq!(row.file_name.as_str(), "file.rs");
-        assert_eq!(
-            row.dir_path.as_str(),
-            "very/deeply/nested/directory/structure/"
-        );
     }
 
     // --- FileViewMode tests ---

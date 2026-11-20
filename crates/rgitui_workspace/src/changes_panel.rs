@@ -1126,7 +1126,7 @@ impl Render for ChangesPanel {
             ChangeKindFilter::Modified => t!("changes.kind.modified"),
             ChangeKindFilter::Added => t!("changes.kind.added"),
             ChangeKindFilter::Deleted => t!("changes.kind.deleted"),
-            ChangeKindFilter::Other => t!("changes.kind.other"),
+            ChangeKindFilter::Other => t!("changes.kind.unclassified"),
         };
         let sort_label = if self.sort_by_kind {
             t!("changes.sort.status")
@@ -1763,7 +1763,7 @@ impl Render for ChangesPanel {
                             let label = if paths.len() > 1 {
                                 format!(
                                     "{} ({} files)",
-                                    t!("changes.menu.discard").to_string(),
+                                    t!("changes.menu.discard"),
                                     paths.len()
                                 )
                                 .into()

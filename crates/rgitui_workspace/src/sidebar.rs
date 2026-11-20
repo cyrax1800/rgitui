@@ -1443,7 +1443,7 @@ impl Sidebar {
             .selected_file
             .as_ref()
             .is_some_and(|(selected, staged)| {
-                !*staged && PathBuf::from(selected.as_str()) == directory
+                !*staged && std::path::Path::new(selected.as_str()) == directory
             })
         {
             self.selected_file = None;

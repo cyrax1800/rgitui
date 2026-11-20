@@ -954,7 +954,9 @@ mod ime_tests {
     fn utf16_offsets_are_clamped_to_valid_boundaries() {
         let text = "中文";
         assert_eq!(utf16_to_utf8(text, usize::MAX), text.len());
-        assert_eq!(utf16_range_to_utf8(text, 5..1), 3..6);
+        // A reversed range, as an IME can report one, comes back ordered.
+        let reversed = std::ops::Range { start: 5, end: 1 };
+        assert_eq!(utf16_range_to_utf8(text, reversed), 3..6);
         assert_eq!(utf8_to_utf16(text, text.len()), 2);
     }
 }

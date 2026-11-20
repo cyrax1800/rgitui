@@ -1,39 +1,11 @@
-use std::time::Instant;
-
 use gpui::Context;
 use rgitui_git::{GitOperationKind, GitOperationUpdate, PullAttempt, PullLocalChanges};
 
 use crate::ToastKind;
 
-use super::{Workspace, OPERATION_OUTPUT_AUTO_HIDE_SECS};
+use super::Workspace;
 
 impl Workspace {
-    pub(super) fn schedule_operation_output_auto_hide(
-        &mut self,
-        timestamp: Instant,
-        cx: &mut Context<Self>,
-    ) {
-        cx.spawn(async move |this, cx: &mut gpui::AsyncApp| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_secs(
-                    OPERATION_OUTPUT_AUTO_HIDE_SECS,
-                ))
-                .await;
-            cx.update(|cx| {
-                this.update(cx, |this, cx| {
-                    if let Some(output) = &this.operations.last_operation_output {
-                        if output.timestamp == timestamp && !output.expanded && !output.is_error {
-                            this.operations.last_operation_output = None;
-                            cx.notify();
-                        }
-                    }
-                })
-                .ok();
-            })
-        })
-        .detach();
-    }
-
     /// What Pull does about uncommitted changes, as chosen in Settings.
     pub(super) fn pull_local_changes_setting(cx: &gpui::App) -> PullLocalChanges {
         cx.try_global::<rgitui_settings::SettingsState>()

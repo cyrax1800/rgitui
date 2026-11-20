@@ -147,26 +147,19 @@ fn pull_preview_from_repo(
     })
 }
 
+/// The conflicted paths in `git merge-tree --write-tree --name-only -z` output.
+///
+/// Git prints the merged tree's id, then one conflicted path per field, then an
+/// empty field, then informational messages (`<count>\0<path>...\0<type>\0
+/// <message>\0`). Only the list before the empty field is read: the messages
+/// repeat the paths alongside counts and message types, which are not paths.
 fn parse_merge_tree_conflict_paths(output: &[u8]) -> Vec<std::path::PathBuf> {
-    let mut fields = output
+    let mut paths: Vec<std::path::PathBuf> = output
         .split(|byte| *byte == 0)
-        .filter(|field| !field.is_empty());
-    let first = fields.next().unwrap_or_default();
-    let first_is_tree_id =
-        (first.len() == 40 || first.len() == 64) && first.iter().all(u8::is_ascii_hexdigit);
-    let mut paths = Vec::new();
-    if !first_is_tree_id && !first.is_empty() {
-        paths.push(std::path::PathBuf::from(
-            String::from_utf8_lossy(first).into_owned(),
-        ));
-    }
-    for field in fields {
-        let path = String::from_utf8_lossy(field);
-        if path.starts_with("CONFLICT ") || path.starts_with("Auto-merging ") {
-            continue;
-        }
-        paths.push(std::path::PathBuf::from(path.into_owned()));
-    }
+        .skip(1)
+        .take_while(|field| !field.is_empty())
+        .map(|field| std::path::PathBuf::from(String::from_utf8_lossy(field).into_owned()))
+        .collect();
     paths.sort();
     paths.dedup();
     paths
@@ -1747,11 +1740,14 @@ mod pull_preview_tests {
     }
 
     #[test]
-    fn drops_merge_tree_diagnostic_fields() {
+    fn ignores_the_informational_messages_after_the_path_list() {
+        // Verbatim output of git 2.54 for a content conflict in `f.txt`.
         let paths = parse_merge_tree_conflict_paths(
-            b"0123456789012345678901234567890123456789\0CONFLICT (content): file.txt\0file.txt\0",
+            b"96f5e7ed55b9a723208fb8e50702f677d3bdf9ca\0f.txt\0\0\
+              1\0f.txt\0Auto-merging\0Auto-merging f.txt\n\0\
+              1\0f.txt\0CONFLICT (contents)\0CONFLICT (content): Merge conflict in f.txt\n\0",
         );
-        assert_eq!(paths, vec![PathBuf::from("file.txt")]);
+        assert_eq!(paths, vec![PathBuf::from("f.txt")]);
     }
 }
 

@@ -76,7 +76,7 @@ pub(super) fn subscribe_add_submodule_dialog(
             cx.spawn(async move |this, cx: &mut gpui::AsyncApp| {
                 let result = task.await.map_err(|error| error.to_string());
                 cx.update(|cx| {
-                    let _ = dialog.update(cx, |dialog, cx| dialog.on_finished(result.clone(), cx));
+                    dialog.update(cx, |dialog, cx| dialog.on_finished(result.clone(), cx));
                     let _ = this.update(cx, |workspace, cx| match result {
                         Ok(()) => {
                             workspace.show_toast(
@@ -147,7 +147,7 @@ pub(super) fn subscribe_remote_dialog(cx: &mut Context<Workspace>, dialog: &Enti
         cx.spawn(async move |this, cx: &mut gpui::AsyncApp| {
             let result = task.await.map_err(|error| error.to_string());
             cx.update(|cx| {
-                let _ = dialog.update(cx, |dialog, cx| dialog.on_finished(result.clone(), cx));
+                dialog.update(cx, |dialog, cx| dialog.on_finished(result.clone(), cx));
                 let _ = this.update(cx, |workspace, cx| match result {
                     Ok(()) => {
                         workspace.show_toast(t!("workspace.remote.updated"), ToastKind::Success, cx)
@@ -162,7 +162,7 @@ pub(super) fn subscribe_remote_dialog(cx: &mut Context<Workspace>, dialog: &Enti
 }
 
 use super::{
-    ActiveOperation, AiGenerationTarget, BottomPanelMode, OperationOutput, UndoAction, ViewCaches,
+    ActiveOperation, AiGenerationTarget, BottomPanelMode, UndoAction, ViewCaches,
     Workspace,
 };
 
@@ -1631,7 +1631,6 @@ pub(super) fn subscribe_project(cx: &mut Context<Workspace>, subs: ProjectSubscr
                         this.operations.active_git_operation = Some(update.clone());
                         this.operations.active_operations.push(ActiveOperation {
                             id: operation_id,
-                            label: update.summary.clone(),
                             started_at: Instant::now(),
                         });
                     }
@@ -1656,21 +1655,6 @@ pub(super) fn subscribe_project(cx: &mut Context<Workspace>, subs: ProjectSubscr
                         {
                             this.operations.last_failed_git_operation = None;
                         }
-                        if let Some(details) = update
-                            .details
-                            .as_ref()
-                            .filter(|details| !details.translated().is_empty())
-                        {
-                            let now = Instant::now();
-                            this.operations.last_operation_output = Some(OperationOutput {
-                                operation: update.kind.name(),
-                                output: details.clone(),
-                                is_error: false,
-                                timestamp: now,
-                                expanded: false,
-                            });
-                            this.schedule_operation_output_auto_hide(now, cx);
-                        }
                     }
                     GitOperationState::Failed => {
                         this.operations
@@ -1686,15 +1670,6 @@ pub(super) fn subscribe_project(cx: &mut Context<Workspace>, subs: ProjectSubscr
                         }
                         this.operations.last_failed_git_operation = Some(update.clone());
                         this.set_status_message(failure.clone(), cx);
-                        let error_output =
-                            update.details.clone().unwrap_or_else(|| failure.clone());
-                        this.operations.last_operation_output = Some(OperationOutput {
-                            operation: update.kind.name(),
-                            output: error_output,
-                            is_error: true,
-                            timestamp: Instant::now(),
-                            expanded: true,
-                        });
                     }
                 }
 
@@ -3198,7 +3173,7 @@ pub(super) fn subscribe_detail_panel(
                         diff_viewer.update(cx, |dv, cx| dv.clear(cx));
                         return;
                     }
-                    let Ok(oid) = git2::Oid::from_str(&oid) else {
+                    let Ok(oid) = git2::Oid::from_str(oid) else {
                         return;
                     };
                     let repo_path = project.read(cx).repo_path().to_path_buf();

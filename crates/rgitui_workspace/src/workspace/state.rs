@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::focus::{DrawnPanels, OverlayFocus};
-use super::{ActiveOperation, OperationOutput};
+use super::ActiveOperation;
 
 /// Layout dimensions for resizable panels.
 pub(crate) struct LayoutState {
@@ -67,7 +67,6 @@ pub(crate) struct OperationState {
     pub active_git_operation: Option<GitOperationUpdate>,
     pub last_failed_git_operation: Option<GitOperationUpdate>,
     pub active_operations: Vec<ActiveOperation>,
-    pub last_operation_output: Option<OperationOutput>,
     /// The panel the in-flight AI generation writes to. The generator refuses
     /// to start a second generation while one is running, so one slot is all
     /// there can ever be.

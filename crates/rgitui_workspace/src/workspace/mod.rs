@@ -333,20 +333,9 @@ impl FocusedPanel {
 /// Tracks a long-running git operation in progress.
 pub(super) struct ActiveOperation {
     pub id: u64,
-    pub label: Message,
     pub started_at: Instant,
 }
 
-/// Stores the result of a completed git operation for display in the output bar.
-pub(super) struct OperationOutput {
-    pub operation: Message,
-    pub output: Message,
-    pub is_error: bool,
-    pub timestamp: Instant,
-    pub expanded: bool,
-}
-
-pub(super) const OPERATION_OUTPUT_AUTO_HIDE_SECS: u64 = 10;
 
 /// A pending "new release available" banner shown above the status bar.
 #[derive(Debug, Clone)]
@@ -519,7 +508,6 @@ impl Workspace {
                 active_git_operation: None,
                 last_failed_git_operation: None,
                 active_operations: Vec::new(),
-                last_operation_output: None,
                 ai_target: None,
             },
             focus: FocusState {

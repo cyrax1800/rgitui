@@ -5172,7 +5172,7 @@ mod tests {
 
     #[test]
     fn history_filter_preserves_commit_order() {
-        let mut commits = vec![
+        let mut commits = [
             make_commit(3, &[], Vec::new()),
             make_commit(2, &[], Vec::new()),
             make_commit(1, &[], Vec::new()),

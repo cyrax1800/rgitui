@@ -3122,7 +3122,3 @@ fn fill_container() -> StyleRefinement {
     StyleRefinement::default().size_full()
 }
 
-/// A panel taking the rest of a column below a header.
-fn fill_rest_of_column() -> StyleRefinement {
-    StyleRefinement::default().flex_1().min_h_0().w_full()
-}

@@ -7,6 +7,9 @@ use rgitui_ui::{
 };
 use std::rc::Rc;
 
+/// A status-bar button's click handler, shared with the element that draws it.
+type ClickCallback = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
 /// The bottom status bar.
 #[derive(IntoElement)]
 pub struct StatusBar {
@@ -18,8 +21,8 @@ pub struct StatusBar {
     stash_count: usize,
     operation_message: Option<String>,
     operation_details: Option<String>,
-    on_retry: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
-    on_pull_autostash: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+    on_retry: Option<ClickCallback>,
+    on_pull_autostash: Option<ClickCallback>,
     is_loading: bool,
     is_error: bool,
     head_detached: bool,

@@ -506,7 +506,6 @@ impl Workspace {
         self.operations.active_git_operation = None;
         self.operations.last_failed_git_operation = None;
         self.operations.active_operations.clear();
-        self.operations.last_operation_output = None;
 
         if cx.try_global::<rgitui_settings::SettingsState>().is_some() {
             let settings = cx.global_mut::<rgitui_settings::SettingsState>();

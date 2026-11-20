@@ -3508,7 +3508,7 @@ mod commit_log_reuse_tests {
 
         let caches = RefreshCaches::default();
         caches.seed_hydrated_history(
-            &repo.repo(),
+            repo.repo(),
             10,
             &initial.recent_commits,
             initial.has_more_commits,
