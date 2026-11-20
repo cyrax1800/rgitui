@@ -32,6 +32,12 @@ pub enum Step {
         #[serde(default)]
         settle: Settle,
     },
+    /// Type `text` into whatever has focus, one keystroke per character.
+    ///
+    /// Each character goes through the same keystroke dispatch as [`Step::Key`],
+    /// so a focused text input receives it as typed input; with nothing
+    /// focused that accepts text, the characters fall through to the keymap.
+    Type { text: String },
     /// Synthesise a scroll wheel event at a window position.
     Scroll {
         x: f32,
@@ -62,6 +68,12 @@ pub enum Step {
     },
     /// Move the mouse, then press and release at a window position.
     Click { x: f32, y: f32 },
+    /// Resize the window's content area to `width` x `height` logical pixels.
+    ///
+    /// The app maximizes into whatever room the display has left after the
+    /// Dock and menu bar, so without this a coordinate that hits a control on
+    /// one run lands somewhere else on the next. Put it before any mouse step.
+    Resize { width: f32, height: f32 },
     /// Sleep for a fixed duration.
     Wait { ms: u64 },
     /// Block until a condition holds, or fail the run on timeout.
@@ -76,6 +88,14 @@ pub enum Step {
     EndMark { mark: String },
     /// Force a heap census sample and label it.
     Snapshot { snapshot: String },
+    /// Save the window's next drawn frame as `screenshots/<NN>-<name>.png` in
+    /// the run directory.
+    ///
+    /// The frame is rendered offscreen by the app's own renderer, so it needs no
+    /// screen-recording permission and works whether or not the window is
+    /// visible. Needs a build with the `perf-capture` feature; without it the
+    /// step fails the run rather than quietly producing no image.
+    Screenshot { screenshot: String },
     /// Append a line to `count` tracked files in the working tree.
     ///
     /// Without this no scenario can produce a dirty working tree at all: the

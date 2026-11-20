@@ -30,6 +30,11 @@ perf = ["dep:rgitui_perf", "rgitui_perf/enabled", "rgitui_workspace/perf"]
 perf-dhat = ["perf", "rgitui_perf/dhat-heap"]
 # Routes gpui's own draw/present/dispatch instrumentation to Tracy.
 perf-tracy = ["perf", "rgitui_perf/tracy"]
+# Adds the replay `screenshot` step, which saves the window's frame from the
+# renderer itself — no screen-recording permission, works on a hidden window.
+# The platform crate must implement the capture too, hence its `test-support`.
+# For verification runs, not measurements: it builds gpui's test-only code.
+perf-capture = ["perf", "rgitui_perf/capture", "gpui_platform/test-support"]
 
 [dependencies]
 gpui.workspace = true

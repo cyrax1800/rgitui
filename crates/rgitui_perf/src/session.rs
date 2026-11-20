@@ -667,6 +667,12 @@ impl PerfSession {
         self.pending_actions = still_pending;
     }
 
+    /// Where this run writes its report and any other files it produces.
+    pub fn output_dir(cx: &App) -> Option<PathBuf> {
+        cx.try_global::<Self>()
+            .map(|session| session.config.output_dir.clone())
+    }
+
     /// Aggregates everything and writes the run's files.
     pub fn finish(cx: &mut App) -> anyhow::Result<Option<PathBuf>> {
         if !cx.has_global::<Self>() {

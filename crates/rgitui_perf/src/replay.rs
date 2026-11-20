@@ -113,6 +113,27 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
             }
         }
 
+        Step::Type { text } => {
+            for ch in text.chars() {
+                let keystroke = Keystroke {
+                    modifiers: Modifiers {
+                        shift: ch.is_uppercase(),
+                        ..Modifiers::default()
+                    },
+                    key: match ch {
+                        ' ' => "space".to_string(),
+                        '\n' => "enter".to_string(),
+                        _ => ch.to_lowercase().to_string(),
+                    },
+                    key_char: Some(ch.to_string()),
+                };
+                cx.update(|window, cx| {
+                    window.dispatch_keystroke(keystroke, cx);
+                })?;
+            }
+            next_frame(cx).await;
+        }
+
         Step::Scroll {
             x,
             y,
@@ -200,6 +221,27 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
             next_frame(cx).await;
         }
 
+        Step::Resize { width, height } => {
+            let wanted = gpui::size(px(*width), px(*height));
+            cx.update(|window, _| window.resize(wanted))?;
+            // The platform applies a resize asynchronously; carry on only once
+            // layout runs at the new size, so the next click hits what it means to.
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                next_frame(cx).await;
+                let actual = cx.update(|window, _| window.viewport_size())?;
+                if actual == wanted {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    anyhow::bail!(
+                        "asked for a {width}x{height} window and got {actual:?} — the display \
+                         may be too small for it"
+                    );
+                }
+            }
+        }
+
         Step::Wait { ms } => {
             cx.background_executor()
                 .timer(Duration::from_millis(*ms))
@@ -239,6 +281,31 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
                 .spawn(async move { dirty_tracked_files(&repo_path, count) })
                 .await?;
             log::info!("dirtied {touched} tracked files");
+        }
+
+        Step::Screenshot { screenshot } => {
+            // Ask for a fresh frame so the capture shows the state every
+            // earlier step left, not the frame from before the last of them.
+            cx.update(|window, _| window.refresh())?;
+            next_frame(cx).await;
+            let (path, scale) =
+                cx.update(|window, cx| -> anyhow::Result<(std::path::PathBuf, f32)> {
+                    let dir = PerfSession::output_dir(cx)
+                        .ok_or_else(|| anyhow::anyhow!("no perf session to write into"))?
+                        .join("screenshots");
+                    std::fs::create_dir_all(&dir)?;
+                    let index = std::fs::read_dir(&dir)?.count();
+                    let path = dir.join(format!("{index:02}-{screenshot}.png"));
+                    capture_window(window, &path)?;
+                    Ok((path, window.scale_factor()))
+                })??;
+            // The image is in device pixels; `click`, `hover` and `scroll`
+            // steps take logical ones. Logging the factor lets whoever reads
+            // the image turn a point on it into a step.
+            log::info!(
+                "screenshot {screenshot:?} saved to {} (scale factor {scale})",
+                path.display()
+            );
         }
 
         Step::Snapshot { snapshot } => {
@@ -410,6 +477,22 @@ async fn wait_for(
             .timer(CONDITION_POLL_INTERVAL)
             .await;
     }
+}
+
+/// Renders the window's last drawn scene offscreen and writes it as a PNG.
+#[cfg(feature = "capture")]
+fn capture_window(window: &Window, path: &std::path::Path) -> anyhow::Result<()> {
+    let image = window.render_to_image()?;
+    image.save(path)?;
+    Ok(())
+}
+
+#[cfg(not(feature = "capture"))]
+fn capture_window(_window: &Window, _path: &std::path::Path) -> anyhow::Result<()> {
+    anyhow::bail!(
+        "a `screenshot` step needs a build with `--features perf-capture`, which links the \
+         renderer's offscreen capture"
+    )
 }
 
 /// Starts a scenario on the window's foreground task queue.

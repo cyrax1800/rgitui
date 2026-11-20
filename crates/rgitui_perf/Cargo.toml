@@ -25,6 +25,10 @@ dhat-heap = ["enabled", "dep:dhat"]
 # draw/present/dispatch_event to Tracy. `profiling` is a plain dependency rather
 # than an optional one so Cargo unifies this feature into gpui's own copy.
 tracy = ["enabled", "profiling/profile-with-tracy"]
+# Lets a replayed `screenshot` step save the window's frame. gpui exposes its
+# offscreen render only under `test-support`, so this is kept out of `enabled`:
+# a measured build should not carry test-only code paths.
+capture = ["enabled", "gpui/test-support", "dep:image"]
 
 [dependencies]
 # gpui's task and frame profiler is opt-in upstream, and the frame timings the
@@ -39,6 +43,7 @@ dirs.workspace = true
 chrono.workspace = true
 git2.workspace = true
 dhat = { version = "0.3.3", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 profiling = "1.0.18"
 backtrace = "0.3.76"
 
