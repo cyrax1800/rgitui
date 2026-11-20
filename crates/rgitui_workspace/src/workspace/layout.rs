@@ -29,7 +29,10 @@ const WORKSPACE_MODAL_KEY_CONTEXT: &str = "Workspace modal";
 
 /// Resize bounds for the right detail panel, shared by the drag handle and the
 /// Ctrl+[ / Ctrl+] keyboard shortcuts so both input paths clamp identically.
-pub(super) const MIN_DETAIL_PANEL_WIDTH: f32 = 180.0;
+/// The minimum is what its widest fixed row needs: the five panel tabs, and
+/// the commit header with its AI button, both measured at the default font
+/// size. Below it the tabs and the commit button are cut off at the edge.
+pub(super) const MIN_DETAIL_PANEL_WIDTH: f32 = 400.0;
 pub(super) const MAX_DETAIL_PANEL_WIDTH: f32 = 720.0;
 
 /// 历史详情文件列表的拖拽范围。
@@ -69,10 +72,11 @@ fn head_display_name(branch: Option<&str>, head_oid: Option<git2::Oid>) -> Strin
     }
 }
 
-/// Smallest width the center column (commit graph + diff viewer) is allowed to
-/// keep when the window is narrow. The fixed-width side panels are capped at
-/// render time so the primary view never collapses below this width.
-pub(super) const MIN_CENTER_WIDTH: f32 = 320.0;
+/// Smallest width the center column (commit graph + diff viewer) keeps when
+/// the window is narrow; see [`fit_side_panels`]. Low enough that the side
+/// panels keep their minimums down to a window about 900px wide: a narrower
+/// diff stays usable, where a cut-off commit button does not.
+pub(super) const MIN_CENTER_WIDTH: f32 = 240.0;
 
 /// The interface font when the `ui_font` setting is empty. On macOS it is the
 /// system font, as in every native app; code, diffs and hashes set their own
@@ -815,24 +819,11 @@ impl Render for Workspace {
                 // window grows again. `content_bounds` is zero-sized on the very
                 // first frame (before the tracking canvas has run), so the cap
                 // is skipped until a real width is known.
-                let available_width = f32::from(self.layout.content_bounds.size.width);
-                let (sidebar_width, detail_panel_width) = if available_width > MIN_CENTER_WIDTH {
-                    let budget = (available_width - MIN_CENTER_WIDTH).max(0.0);
-                    let requested = self.layout.sidebar_width + self.layout.detail_panel_width;
-                    if requested > budget {
-                        // Shrink both panels proportionally so neither one
-                        // disappears entirely while the center stays usable.
-                        let scale = budget / requested;
-                        (
-                            (self.layout.sidebar_width * scale).max(0.0),
-                            (self.layout.detail_panel_width * scale).max(0.0),
-                        )
-                    } else {
-                        (self.layout.sidebar_width, self.layout.detail_panel_width)
-                    }
-                } else {
-                    (self.layout.sidebar_width, self.layout.detail_panel_width)
-                };
+                let (sidebar_width, detail_panel_width) = fit_side_panels(
+                    f32::from(self.layout.content_bounds.size.width),
+                    self.layout.sidebar_width,
+                    self.layout.detail_panel_width,
+                );
 
                 div()
                     .id("main-content")
@@ -3117,7 +3108,102 @@ mod head_display_name_tests {
 // gpui then propagates; globals they read are covered by
 // `Workspace::_appearance_subscriptions`.
 
+/// The rendered widths of the sidebar and the detail panel in a content area
+/// `available` pixels wide, given the widths the user chose.
+///
+/// Each panel keeps at least its minimum, which is what its content needs, so
+/// a narrow window shrinks only the room a panel has above its minimum, in
+/// proportion, and the center column takes up the rest of the squeeze. Only a
+/// window too narrow for both minimums and [`MIN_CENTER_WIDTH`] scales the
+/// minimums down, so neither panel is pushed past the window's edge. The
+/// stored widths are not touched: the panels return to them as the window
+/// grows. `available` is zero on the first frame, before anything measured
+/// it, and then the chosen widths are used as they are, clamped.
+fn fit_side_panels(available: f32, sidebar: f32, detail: f32) -> (f32, f32) {
+    let sidebar = sidebar.clamp(super::MIN_SIDEBAR_WIDTH, super::MAX_SIDEBAR_WIDTH);
+    let detail = detail.clamp(MIN_DETAIL_PANEL_WIDTH, MAX_DETAIL_PANEL_WIDTH);
+    if available <= 0.0 {
+        return (sidebar, detail);
+    }
+    let budget = (available - MIN_CENTER_WIDTH).max(0.0);
+    let excess = sidebar + detail - budget;
+    if excess <= 0.0 {
+        return (sidebar, detail);
+    }
+    let sidebar_slack = sidebar - super::MIN_SIDEBAR_WIDTH;
+    let detail_slack = detail - MIN_DETAIL_PANEL_WIDTH;
+    let slack = sidebar_slack + detail_slack;
+    if excess < slack {
+        let keep = 1.0 - excess / slack;
+        return (
+            super::MIN_SIDEBAR_WIDTH + sidebar_slack * keep,
+            MIN_DETAIL_PANEL_WIDTH + detail_slack * keep,
+        );
+    }
+    let minimums = super::MIN_SIDEBAR_WIDTH + MIN_DETAIL_PANEL_WIDTH;
+    let scale = (budget / minimums).min(1.0);
+    (
+        super::MIN_SIDEBAR_WIDTH * scale,
+        MIN_DETAIL_PANEL_WIDTH * scale,
+    )
+}
+
 /// A panel filling the container the workspace sized for it.
 fn fill_container() -> StyleRefinement {
     StyleRefinement::default().size_full()
+}
+
+#[cfg(test)]
+mod side_panel_width_tests {
+    use super::super::{MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH};
+    use super::{fit_side_panels, MIN_CENTER_WIDTH, MIN_DETAIL_PANEL_WIDTH};
+
+    #[test]
+    fn a_wide_window_keeps_the_chosen_widths() {
+        assert_eq!(fit_side_panels(1600.0, 300.0, 450.0), (300.0, 450.0));
+    }
+
+    #[test]
+    fn a_narrow_window_never_takes_a_panel_below_its_minimum() {
+        // The chosen widths do not fit beside the center column, but the
+        // minimums do: the panels give up only their room above the minimum.
+        let (sidebar, detail) = fit_side_panels(1000.0, 320.0, 520.0);
+        assert!(sidebar >= MIN_SIDEBAR_WIDTH && detail >= MIN_DETAIL_PANEL_WIDTH);
+        assert!((sidebar + detail - (1000.0 - MIN_CENTER_WIDTH)).abs() < 0.01);
+        // Each gives up the same share of what it had above its minimum.
+        let sidebar_kept = (sidebar - MIN_SIDEBAR_WIDTH) / (320.0 - MIN_SIDEBAR_WIDTH);
+        let detail_kept = (detail - MIN_DETAIL_PANEL_WIDTH) / (520.0 - MIN_DETAIL_PANEL_WIDTH);
+        assert!((sidebar_kept - detail_kept).abs() < 0.001);
+    }
+
+    #[test]
+    fn the_minimums_hold_while_the_center_column_gives_way() {
+        let width = MIN_SIDEBAR_WIDTH + MIN_DETAIL_PANEL_WIDTH + MIN_CENTER_WIDTH;
+        assert_eq!(
+            fit_side_panels(width, 400.0, 600.0),
+            (MIN_SIDEBAR_WIDTH, MIN_DETAIL_PANEL_WIDTH)
+        );
+    }
+
+    #[test]
+    fn a_window_too_narrow_for_the_minimums_still_fits_both_panels() {
+        let available = 700.0;
+        let (sidebar, detail) = fit_side_panels(available, 300.0, 450.0);
+        assert!(sidebar + detail + MIN_CENTER_WIDTH <= available + 0.01);
+        assert!(sidebar > 0.0 && detail > 0.0);
+    }
+
+    #[test]
+    fn widths_saved_below_the_minimum_are_raised_to_it() {
+        assert_eq!(
+            fit_side_panels(1600.0, 120.0, 180.0),
+            (MIN_SIDEBAR_WIDTH, MIN_DETAIL_PANEL_WIDTH)
+        );
+        assert_eq!(fit_side_panels(1600.0, 900.0, 450.0).0, MAX_SIDEBAR_WIDTH);
+    }
+
+    #[test]
+    fn the_first_frame_uses_the_chosen_widths() {
+        assert_eq!(fit_side_panels(0.0, 300.0, 450.0), (300.0, 450.0));
+    }
 }

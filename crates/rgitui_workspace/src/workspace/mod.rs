@@ -381,8 +381,9 @@ pub struct Workspace {
 
 /// Smallest width the left sidebar may take, whether reached by dragging the
 /// resize handle or loaded from persisted settings. Keeps section headers like
-/// the worktree controls readable instead of clipping their contents away.
-pub(super) const MIN_SIDEBAR_WIDTH: f32 = 200.0;
+/// the worktree controls readable instead of clipping their contents away:
+/// the Worktrees header, with its New Worktree button and count, is the widest.
+pub(super) const MIN_SIDEBAR_WIDTH: f32 = 256.0;
 /// Largest width the left sidebar may take.
 pub(super) const MAX_SIDEBAR_WIDTH: f32 = 600.0;
 
