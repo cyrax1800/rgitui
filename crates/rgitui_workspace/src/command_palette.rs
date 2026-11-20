@@ -542,6 +542,12 @@ pub(crate) fn palette_commands() -> Vec<PaletteCommand> {
             "File",
         ),
         PaletteCommand::new(
+            CommandId::CloneRepo,
+            "File: Clone Repository",
+            Some("Clone a remote repository into a local folder"),
+            "File",
+        ),
+        PaletteCommand::new(
             CommandId::WorkspaceHome,
             "Workspace: Home",
             Some("Return to the workspace home screen"),

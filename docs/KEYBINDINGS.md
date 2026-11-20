@@ -76,6 +76,7 @@ The file is reloaded when you save it. Bindings you add win over the defaults. T
 | `f5` | `Workspace && !modal` | `rgitui::Refresh` | Reload the repository state from disk. |
 | `secondary-,` | `Workspace` | `rgitui::Settings` | Open the settings window. |
 | `secondary-o` | `Workspace` | `rgitui::OpenRepo` | Open the repository picker. |
+| _unbound_ | — | `rgitui::CloneRepo` | Clone a remote repository. |
 | `ctrl-h` | `Workspace && !modal` | `rgitui::WorkspaceHome` | Close every tab and return to the workspace home screen. |
 | _unbound_ | — | `rgitui::RestoreLastWorkspace` | Reopen the most recently saved workspace. |
 | `?` | `Workspace && !TextInput` | `rgitui::Shortcuts` | Show the keyboard shortcut reference. |
@@ -115,6 +116,17 @@ The file is reloaded when you save it. Bindings you add win over the defaults. T
 | `secondary-down` | `Workspace && !modal` | `rgitui::GrowDiffViewer` | Heighten the diff viewer. |
 | _unbound_ | — | `rgitui::OpenKeymap` | Open keymap.json in your editor to rebind shortcuts. |
 | `secondary-q` | `Workspace \|\| SettingsWindow` | `rgitui::Quit` | Quit rgitui. |
+
+## App
+
+| Keystroke | Context | Action | Description |
+| --- | --- | --- | --- |
+| _unbound_ | — | `rgitui::About` | Show rgitui's version. |
+| `cmd-h` | `Workspace \|\| SettingsWindow` | `rgitui::Hide` | Hide rgitui's windows. |
+| `cmd-alt-h` | `Workspace \|\| SettingsWindow` | `rgitui::HideOthers` | Hide every other application's windows. |
+| _unbound_ | — | `rgitui::ShowAll` | Show every application's windows again. |
+| `cmd-m` | `Workspace \|\| SettingsWindow` | `rgitui::Minimize` | Minimize the active window. |
+| _unbound_ | — | `rgitui::Zoom` | Zoom the active window to fill the screen, or restore it. |
 
 ## Menu
 

@@ -205,6 +205,10 @@
           "description": "Open the repository picker. Command id: `open_repo`."
         },
         {
+          "const": "rgitui::CloneRepo",
+          "description": "Clone a remote repository. Command id: `clone_repo`."
+        },
+        {
           "const": "rgitui::WorkspaceHome",
           "description": "Close every tab and return to the workspace home screen. Command id: `workspace_home`."
         },
@@ -359,6 +363,30 @@
         {
           "const": "rgitui::Quit",
           "description": "Quit rgitui. Command id: `quit`."
+        },
+        {
+          "const": "rgitui::About",
+          "description": "Show rgitui's version. Command id: `about`."
+        },
+        {
+          "const": "rgitui::Hide",
+          "description": "Hide rgitui's windows. Command id: `hide`."
+        },
+        {
+          "const": "rgitui::HideOthers",
+          "description": "Hide every other application's windows. Command id: `hide_others`."
+        },
+        {
+          "const": "rgitui::ShowAll",
+          "description": "Show every application's windows again. Command id: `show_all`."
+        },
+        {
+          "const": "rgitui::Minimize",
+          "description": "Minimize the active window. Command id: `minimize`."
+        },
+        {
+          "const": "rgitui::Zoom",
+          "description": "Zoom the active window to fill the screen, or restore it. Command id: `zoom`."
         },
         {
           "const": "menu::Cancel",

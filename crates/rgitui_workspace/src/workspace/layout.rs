@@ -74,6 +74,15 @@ fn head_display_name(branch: Option<&str>, head_oid: Option<git2::Oid>) -> Strin
 /// render time so the primary view never collapses below this width.
 pub(super) const MIN_CENTER_WIDTH: f32 = 320.0;
 
+/// The interface font when the `ui_font` setting is empty. On macOS it is the
+/// system font, as in every native app; code, diffs and hashes set their own
+/// monospace family. Elsewhere the bundled Lilex keeps text rendering
+/// identical whatever fonts the system has.
+#[cfg(target_os = "macos")]
+const DEFAULT_UI_FONT: &str = ".SystemUIFont";
+#[cfg(not(target_os = "macos"))]
+const DEFAULT_UI_FONT: &str = "Lilex";
+
 /// The `font_size` setting's default, and the size at which the interface
 /// renders exactly as it did before the setting was wired up.
 const DEFAULT_UI_FONT_SIZE: u32 = 14;
@@ -267,7 +276,7 @@ impl Render for Workspace {
                     }
                 });
 
-            let primary = configured.unwrap_or_else(|| "Lilex".to_string());
+            let primary = configured.unwrap_or_else(|| DEFAULT_UI_FONT.to_string());
             let locale_id = cx
                 .try_global::<rgitui_i18n::ActiveLanguage>()
                 .map(|language| language.locale().id.clone())
@@ -289,7 +298,14 @@ impl Render for Workspace {
         if self.tabs.is_empty() {
             let root = self.workspace_root(cx, ui_font.clone(), colors.background);
             return root
-                .child(self.render_welcome_interactive(cx))
+                .v_flex()
+                .child(crate::window_chrome_row(window, cx))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .child(self.render_welcome_interactive(cx)),
+                )
                 .child(self.toast_layer.clone())
                 .child(self.overlays.command_palette.clone())
                 .child(self.overlays.interactive_rebase.clone())
@@ -451,7 +467,7 @@ impl Render for Workspace {
         // divergence counts whenever a worktree is being inspected.
         let (ahead, behind) = super::events::active_branch_ahead_behind(active_tab, project);
 
-        // Build tab bar
+        let show_tab_bar = self.tabs.len() > 1;
         let mut tab_bar = TabBar::new();
         let workspace_handle = cx.entity().downgrade();
         for (i, tab) in self.tabs.iter().enumerate() {
@@ -607,15 +623,10 @@ impl Render for Workspace {
         let root = self.workspace_root(cx, ui_font, colors.background).v_flex();
 
         root
-            // Repository identity and actions share one toolbar row.
+            // Window title, repository identity and actions share one row,
+            // with the macOS traffic lights inset at its start.
             .child(
-                div()
-                    .h_flex()
-                    .w_full()
-                    .items_center()
-                    .bg(colors.toolbar_background)
-                    .border_b_1()
-                    .border_color(colors.border_variant)
+                crate::window_chrome_row(window, cx)
                     .child(title)
                     .child(active_tab.toolbar.clone()),
             )
@@ -764,8 +775,9 @@ impl Render for Workspace {
                 )
             })
             .when_some(detached_head_banner, |el, banner| el.child(banner))
-            // Tab bar
-            .child(tab_bar)
+            // Like a native macOS tab bar, shown only once there is a second
+            // repository to switch to. File > Open Repository adds one.
+            .when(show_tab_bar, |el| el.child(tab_bar))
             // Main content area — drag_move listeners live here so they fire globally
             .child({
                 let entity = cx.entity();

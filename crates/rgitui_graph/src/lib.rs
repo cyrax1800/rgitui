@@ -3141,7 +3141,9 @@ impl Render for GraphView {
                         );
 
                         row = row.child(
-                            div().w(px(80.)).flex_shrink_0().child(
+                            // Monospace so hashes line up down the column
+                            // whatever the interface font is.
+                            div().w(px(80.)).flex_shrink_0().font_family("Lilex").child(
                                 Label::new(hash_display)
                                     .size(LabelSize::XSmall)
                                     .color(Color::Muted)

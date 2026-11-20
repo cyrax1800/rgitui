@@ -8,6 +8,87 @@ use rgitui_ui::{
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
+/// Height of the unified title row: the window's title bar and the
+/// repository toolbar share it, as in a native macOS unified toolbar.
+pub const TITLE_ROW_HEIGHT: f32 = 40.;
+
+/// Diameter of a macOS traffic light. Fixed in points by AppKit; it does not
+/// follow the interface's rem size.
+const TRAFFIC_LIGHT_SIZE: f32 = 14.;
+
+/// Left inset of the first traffic light, matching the gap AppKit leaves above
+/// it so the three buttons sit in a square corner.
+const TRAFFIC_LIGHT_INSET: f32 = 13.;
+
+/// Room the title row leaves for the traffic lights: the inset and the three
+/// buttons. The title's own left padding adds the gap before its first label.
+const TRAFFIC_LIGHT_PADDING: f32 = 72.;
+
+/// Where the traffic lights sit so they are centred in the title row.
+pub fn traffic_light_position() -> gpui::Point<gpui::Pixels> {
+    gpui::point(
+        px(TRAFFIC_LIGHT_INSET),
+        px((TITLE_ROW_HEIGHT - TRAFFIC_LIGHT_SIZE) / 2.),
+    )
+}
+
+/// The window-chrome row that hosts the title and toolbar.
+///
+/// The window uses a transparent title bar, so this row is what the user grabs
+/// to move the window. On macOS it leaves room for the traffic lights (none in
+/// full screen, where AppKit hides them), drags the window, and answers a
+/// double-click with the system's title-bar action (zoom or minimize, per the
+/// user's Dock setting). Elsewhere it is a plain row.
+pub fn window_chrome_row(window: &mut Window, cx: &mut App) -> gpui::Stateful<gpui::Div> {
+    let colors = cx.colors();
+    let row = div()
+        .id("window-chrome-row")
+        .h_flex()
+        .flex_shrink_0()
+        .w_full()
+        .h(px(TITLE_ROW_HEIGHT))
+        .items_center()
+        .bg(colors.toolbar_background)
+        .border_b_1()
+        .border_color(colors.border_variant);
+
+    if !cfg!(target_os = "macos") {
+        return row;
+    }
+
+    // Armed on a press inside the row and spent on the first move, so a click
+    // on a toolbar button is still a click and only a drag moves the window.
+    let drag_armed = window.use_keyed_state("window-chrome-drag", cx, |_, _| false);
+    let arm = drag_armed.clone();
+    let disarm_up = drag_armed.clone();
+    let disarm_out = drag_armed.clone();
+
+    row.window_control_area(gpui::WindowControlArea::Drag)
+        .when(!window.is_fullscreen(), |row| {
+            row.pl(px(TRAFFIC_LIGHT_PADDING))
+        })
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+            arm.write(cx, true);
+        })
+        .on_mouse_up(gpui::MouseButton::Left, move |_, _, cx| {
+            disarm_up.write(cx, false);
+        })
+        .on_mouse_down_out(move |_, _, cx| {
+            disarm_out.write(cx, false);
+        })
+        .on_mouse_move(move |_, window, cx| {
+            if *drag_armed.read(cx) {
+                drag_armed.write(cx, false);
+                window.start_window_move();
+            }
+        })
+        .on_click(|event, window, _| {
+            if event.click_count() == 2 {
+                window.titlebar_double_click();
+            }
+        })
+}
+
 /// The application title bar.
 #[derive(IntoElement)]
 pub struct TitleBar {
@@ -130,8 +211,8 @@ impl RenderOnce for TitleBar {
 
         let mut bar = div()
             .h_flex()
-            .h(px(36.))
-            .bg(colors.toolbar_background)
+            .h_full()
+            .flex_shrink_0()
             .pl(px(12.))
             .pr(px(8.))
             .gap(px(8.))

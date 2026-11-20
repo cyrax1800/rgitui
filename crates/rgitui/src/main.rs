@@ -341,6 +341,9 @@ fn main() {
             .map(|s| s.settings().language.clone())
             .unwrap_or_else(|| rgitui_i18n::SYSTEM_LANGUAGE.to_string());
         rgitui_i18n::init(cx, &saved_language);
+        // The native menu bar. After i18n and the keymap, which supply its
+        // labels and key equivalents.
+        rgitui_workspace::app_menu::init(cx);
 
         // Apply saved theme from settings
         let saved_theme = cx
@@ -407,10 +410,13 @@ fn main() {
 
         // Small centered window for the splash, maximizes on workspace transition.
         let options = WindowOptions {
+            // A transparent title bar: the workspace's own top row is the
+            // title bar, with the traffic lights inset into it, the way a
+            // native macOS unified toolbar looks.
             titlebar: Some(TitlebarOptions {
                 title: Some("rgitui".into()),
-                appears_transparent: false,
-                ..Default::default()
+                appears_transparent: true,
+                traffic_light_position: Some(rgitui_workspace::traffic_light_position()),
             }),
             window_min_size: Some(Size {
                 width: px(320.0),

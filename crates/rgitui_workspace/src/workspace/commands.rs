@@ -429,6 +429,11 @@ impl Workspace {
                     sh.toggle_visible(cx);
                 });
             }
+            CommandId::CloneRepo => {
+                self.dialogs.repo_clone_dialog.update(cx, |dialog, cx| {
+                    dialog.show_visible(None, cx);
+                });
+            }
             CommandId::OpenKeymap => {
                 self.open_keymap_file(cx);
             }
@@ -963,6 +968,7 @@ impl Workspace {
             CommandId::Settings
             | CommandId::CreateBranch
             | CommandId::OpenRepo
+            | CommandId::CloneRepo
             | CommandId::Shortcuts
             | CommandId::OpenKeymap
             | CommandId::Quit
@@ -1054,6 +1060,13 @@ impl Workspace {
             | CommandId::ThemeEditorNextField
             | CommandId::ThemeEditorPrevField
             | CommandId::SubmitPullRequest => {}
+            // Handled at app level by `crate::app_menu`, never by a view.
+            CommandId::About
+            | CommandId::Hide
+            | CommandId::HideOthers
+            | CommandId::ShowAll
+            | CommandId::Minimize
+            | CommandId::Zoom => {}
         }
     }
 

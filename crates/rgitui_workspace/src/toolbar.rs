@@ -4,7 +4,6 @@ use gpui::prelude::*;
 use gpui::SharedString;
 use gpui::{div, px, ClickEvent, Context, EventEmitter, Render, Window};
 use rgitui_i18n::{key, t};
-use rgitui_settings::SettingsState;
 use rgitui_theme::{ActiveTheme, Color, StyledExt};
 use rgitui_ui::{
     Badge, Button, Icon, IconButton, IconName, IconSize, Indicator, Label, LabelSize, Tooltip,
@@ -252,8 +251,8 @@ impl Toolbar {
         div()
             .id(id)
             .h_flex()
-            .h(px(26.))
-            .px(px(6.))
+            .h(gpui::rems(1.75))
+            .px(px(8.))
             .gap(px(4.))
             .items_center()
             .justify_center()
@@ -266,7 +265,7 @@ impl Toolbar {
             })
             .tooltip(move |window, cx| tooltip_fn(window, cx))
             .child(Icon::new(icon).size(IconSize::Small).color(icon_color))
-            .child(Label::new(label).size(LabelSize::XSmall).color(text_color))
+            .child(Label::new(label).size(LabelSize::Small).color(text_color))
     }
 
     fn render_left_group(&mut self, cx: &mut Context<Self>) -> gpui::Div {
@@ -549,22 +548,19 @@ impl Toolbar {
 
 impl Render for Toolbar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let compactness = cx.global::<SettingsState>().settings().compactness;
-        let toolbar_h = compactness.spacing(36.0);
-        let toolbar_bg = cx.colors().toolbar_background;
-
         let left = self.render_left_group(cx);
         let right = self.render_right_group(cx);
 
+        // Sized by the window-chrome row it sits in, whose height is fixed by
+        // the macOS traffic lights rather than the compactness setting.
         div()
             .h_flex()
             .flex_1()
             .min_w_0()
-            .h(px(toolbar_h))
+            .h_full()
             .px(px(8.))
             .items_center()
             .justify_between()
-            .bg(toolbar_bg)
             .child(left)
             .child(right)
     }

@@ -142,6 +142,8 @@ commands! {
         Settings "secondary-," in "Workspace";
         /// Open the repository picker.
         OpenRepo "secondary-o" in "Workspace";
+        /// Clone a remote repository.
+        CloneRepo unbound in "Workspace";
         // Control rather than the primary modifier: macOS reserves Cmd+H for
         // Hide Application, so a `secondary-` binding would never fire there.
         /// Close every tab and return to the workspace home screen.
@@ -227,6 +229,26 @@ commands! {
         // so the app-level handler installed by `rgitui` quits from there.
         /// Quit rgitui.
         Quit "secondary-q" in "Workspace || SettingsWindow";
+    }
+
+    // Window and application commands from the native menu bar. No view attaches
+    // this block: `crate::app_menu` handles each one at app level, so they work
+    // from either window and from neither. Their bindings are `cmd-` rather than
+    // `secondary-` because they are macOS conventions, and `ctrl-h` already
+    // belongs to `WorkspaceHome`.
+    view App in rgitui context "Workspace || SettingsWindow" {
+        /// Show rgitui's version.
+        About unbound [hidden];
+        /// Hide rgitui's windows.
+        Hide "cmd-h" [hidden];
+        /// Hide every other application's windows.
+        HideOthers "cmd-alt-h" [hidden];
+        /// Show every application's windows again.
+        ShowAll unbound [hidden];
+        /// Minimize the active window.
+        Minimize "cmd-m" [hidden];
+        /// Zoom the active window to fill the screen, or restore it.
+        Zoom unbound [hidden];
     }
 
     // Bound once and handled by whichever element owns the selection or the
