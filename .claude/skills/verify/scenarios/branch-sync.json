@@ -1,0 +1,15 @@
+{
+  "name": "branch-sync",
+  "description": "Run with --fixture fixtures/tracking.sh. Before any fetch main reads 1 ahead; the automatic fetch (first tick 30 s after launch) makes it read 1 ahead, 2 behind and feature/login 1 behind, with no fetch from the user. Then the branch context menu opens whole, past the sidebar's edge.",
+  "steps": [
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 60000}},
+    {"resize": {"width": 1280, "height": 800}},
+    {"screenshot": {"screenshot": "before-fetch"}},
+    {"wait": {"ms": 36000}},
+    {"wait_for": {"condition": "operation_idle", "timeout_ms": 30000}},
+    {"wait": {"ms": 1500}},
+    {"screenshot": {"screenshot": "after-auto-fetch"}},
+    {"click": {"x": 150, "y": 126, "button": "right"}},
+    {"screenshot": {"screenshot": "branch-menu"}}
+  ]
+}

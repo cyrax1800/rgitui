@@ -648,6 +648,46 @@ impl Workspace {
     pub fn start_background_tasks(&self, cx: &mut Context<Self>) {
         // Check for app updates in the background
         update_checker::check_for_updates(cx.entity().downgrade(), cx);
+        self.start_auto_fetch(cx);
+    }
+
+    /// Fetch every open repository on the `auto_fetch_interval` setting, so
+    /// the sidebar's ahead/behind counts say when there is something to pull
+    /// without the user fetching first.
+    ///
+    /// The setting is read on every tick rather than once, so changing it in
+    /// Settings takes effect within a tick. The first fetch comes on the first
+    /// tick after launch. A repository with no remote, like every one in the
+    /// perf corpus, is skipped by `background_fetch` itself.
+    fn start_auto_fetch(&self, cx: &mut Context<Self>) {
+        const TICK: std::time::Duration = std::time::Duration::from_secs(30);
+        cx.spawn(async move |this, cx: &mut gpui::AsyncApp| {
+            let mut last_fetch: Option<Instant> = None;
+            loop {
+                cx.background_executor().timer(TICK).await;
+                let alive = this.update(cx, |workspace, cx| {
+                    let period = cx
+                        .try_global::<rgitui_settings::SettingsState>()
+                        .and_then(|state| state.settings().auto_fetch_interval.period());
+                    let Some(period) = period else {
+                        return;
+                    };
+                    if last_fetch.is_some_and(|last| last.elapsed() < period) {
+                        return;
+                    }
+                    last_fetch = Some(Instant::now());
+                    for tab in &workspace.tabs {
+                        tab.project
+                            .update(cx, |project, cx| project.background_fetch(cx))
+                            .detach();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Called by the update checker when a newer release is detected.

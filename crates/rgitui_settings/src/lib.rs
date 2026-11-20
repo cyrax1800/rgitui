@@ -119,9 +119,11 @@ impl FromStr for GraphStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AutoFetchInterval {
-    #[default]
     Disabled,
     OneMinute,
+    /// The default, as in other desktop Git clients: often enough that the
+    /// sidebar's behind counts say when to pull, rarely enough to stay quiet.
+    #[default]
     FiveMinutes,
     FifteenMinutes,
     ThirtyMinutes,
@@ -136,6 +138,18 @@ impl AutoFetchInterval {
         AutoFetchInterval::FifteenMinutes,
         AutoFetchInterval::ThirtyMinutes,
     ];
+
+    /// Time between fetches, or `None` when automatic fetching is off.
+    pub fn period(self) -> Option<std::time::Duration> {
+        let minutes = match self {
+            AutoFetchInterval::Disabled => return None,
+            AutoFetchInterval::OneMinute => 1,
+            AutoFetchInterval::FiveMinutes => 5,
+            AutoFetchInterval::FifteenMinutes => 15,
+            AutoFetchInterval::ThirtyMinutes => 30,
+        };
+        Some(std::time::Duration::from_secs(minutes * 60))
+    }
 }
 
 impl fmt::Display for AutoFetchInterval {

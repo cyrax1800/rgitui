@@ -66,8 +66,14 @@ pub enum Step {
         #[serde(default)]
         settle: Settle,
     },
-    /// Move the mouse, then press and release at a window position.
-    Click { x: f32, y: f32 },
+    /// Move the mouse, then press and release at a window position. `button`
+    /// is `"left"` unless given; `"right"` opens context menus.
+    Click {
+        x: f32,
+        y: f32,
+        #[serde(default)]
+        button: ClickButton,
+    },
     /// Resize the window's content area to `width` x `height` logical pixels.
     ///
     /// The app maximizes into whatever room the display has left after the
@@ -110,6 +116,15 @@ pub enum Step {
         #[serde(default = "one")]
         count: usize,
     },
+}
+
+/// The mouse button a [`Step::Click`] presses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClickButton {
+    #[default]
+    Left,
+    Right,
 }
 
 /// What to wait for before the next step.

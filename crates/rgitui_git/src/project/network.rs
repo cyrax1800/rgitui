@@ -846,6 +846,68 @@ impl GitProject {
         })
     }
 
+    /// Fetch from the preferred remote without reporting it as an operation.
+    ///
+    /// For the periodic automatic fetch: it keeps the remote-tracking refs, and
+    /// with them every branch's ahead/behind counts, current without putting a
+    /// status message up every few minutes. A failure, such as being offline,
+    /// is only logged; the user did not ask for this fetch and nothing they do
+    /// next depends on it. It shares the network lock with the user's own
+    /// fetches, pulls and pushes, so it waits for one already running.
+    pub fn background_fetch(&mut self, cx: &mut Context<Self>) -> Task<()> {
+        let repo_path = self.repo_path.clone();
+        let remote_name = match self.preferred_remote_name_at(&repo_path) {
+            Ok(remote_name) => remote_name,
+            // No remote to fetch from: nothing to keep current.
+            Err(_) => return Task::ready(()),
+        };
+        let commit_limit = super::refresh::effective_refresh_commit_limit(
+            self.commit_limit,
+            self.loaded_commit_count(),
+        );
+        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let task_repo_path = repo_path.clone();
+            let task_remote_name = remote_name.clone();
+            let result: anyhow::Result<RefreshData> = cx
+                .background_executor()
+                .spawn(async move {
+                    validate_remote_name(&task_remote_name)?;
+                    with_network_lock(&task_repo_path, || {
+                        run_git_network_command(
+                            &task_repo_path,
+                            &["fetch", "--prune", &task_remote_name],
+                        )
+                    })?;
+                    gather_refresh_data(&task_repo_path, commit_limit)
+                })
+                .await;
+
+            match result {
+                Ok(data) => {
+                    cx.update(|cx| {
+                        this.update(cx, |this, cx| {
+                            this.apply_refresh_data(data);
+                            // The upstream tips moved, which drops the counts
+                            // measured against them; measure again.
+                            if this.needs_graph_state_refresh() {
+                                this.refresh_ahead_behind(cx);
+                            }
+                            cx.emit(GitProjectEvent::RefsChanged);
+                            cx.notify();
+                        })
+                    })
+                    .ok();
+                }
+                Err(error) => {
+                    log::info!(
+                        "background fetch from {remote_name} in {} skipped: {error:#}",
+                        repo_path.display()
+                    );
+                }
+            }
+        })
+    }
+
     /// Pull into the given worktree, merging into the branch *that* worktree
     /// has checked out.
     pub fn pull_at(

@@ -8,6 +8,8 @@ Create, switch, rename, delete and merge local branches, from the sidebar's Bran
 - `branch-switch`: activating a branch row in the sidebar checks it out.
 - `branch-rename`, `branch-delete`, `branch-merge`: commands with no default key (`rgitui::RenameBranch`, `DeleteBranch`, `MergeBranch`).
 - `branch-previous`: `rgitui::SwitchToPreviousBranch`, like `git switch -`.
+- `branch-sync`: each branch row shows ↑ahead ↓behind against its upstream. The tooltip says to push, pull, or integrate first. The automatic fetch (`auto_fetch_interval`, 5 min by default, first fetch on the 30 s tick after launch) keeps the counts current without a user fetch.
+- `branch-context-menu`: right-clicking a branch row opens a menu drawn above the rest of the window, so it isn't cut off at the sidebar's edge.
 
 ## How to get to it (user POV)
 
@@ -24,6 +26,8 @@ Preconditions: the `fixtures/basic.sh` repo, which has branches `main` (HEAD) an
 - **Create.** `{"key": {"key": "enter", "settle": "frame"}}` then `wait_for operation_idle`.
 - **Proof.** `scenarios/create-branch.json` does all of the above. Then `git -C <run>/repo branch --format='%(HEAD) %(refname:short) %(objectname:short)'` lists `verify/topic` at the same sha as `main`, with `*` still on `main`. The `created` screenshot shows Branches at 3 with a `verify/topic` row, a `Success: Branch 'verify/topic' created` toast, and the status bar reading `Created branch 'verify/topic'`.
 - **Switch (not yet scripted).** Send `alt-1`, then `down`/`up` to the row, then `enter`. Prove it with `git -C <run>/repo symbolic-ref --short HEAD`. The fixture's dirty `src/main.rs` doesn't conflict with `feature/login`, so the switch should carry the change across. If a dialog about local changes appears instead, that's the behaviour to verify. Don't change the fixture to avoid it.
+
+- **Sync counts and the menu.** `scenarios/branch-sync.json` with `--fixture fixtures/tracking.sh`. `before-fetch` shows `main` ↑1. After the automatic fetch, `after-auto-fetch` shows `main` ↑1 ↓2 and `feature/login` ↓1, with no fetch from the scenario. `git -C <run>/repo rev-list --left-right --count main...origin/main` prints `1 2`. `branch-menu` shows the right-click menu whole, extending past the sidebar.
 
 ## Gotchas
 

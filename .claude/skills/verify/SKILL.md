@@ -64,7 +64,7 @@ A scenario is `{"name": ..., "description": ..., "steps": [...]}`. Each step is 
 | `key` | `{"key": "secondary-b", "settle": "frame"}` | One keystroke through the keymap (`secondary` = cmd). Use it for `enter`, `escape`, and shortcuts. |
 | `type` | `{"text": "Fix login"}` | Text into the focused input, one keystroke per character. Uppercase and punctuation work. |
 | `resize` | `{"width": 1280, "height": 800}` | Pins the window in logical px. **Required before `click`/`hover`/`scroll`.** The app maximizes into whatever room the Dock leaves, so coordinates otherwise shift between runs. |
-| `click` | `{"x": 1069, "y": 556}` | Left click at logical window coordinates. |
+| `click` | `{"x": 1069, "y": 556}` | Left click at logical window coordinates. Add `"button": "right"` to right-click, which opens context menus. |
 | `scroll` / `hover` | see `docs/PERFORMANCE.md` | Wheel and pointer sweeps. |
 | `screenshot` | `{"screenshot": "after-commit"}` | Saves `evidence/screenshots/NN-after-commit.png` after a fresh frame. |
 | `wait` | `{"ms": 500}` | A fixed sleep. Use only when no condition fits. |
@@ -120,5 +120,6 @@ A normal run quits on its own and `run.sh` kills it on timeout, so cleanup matte
 | `scripts/to-logical.sh` | Converts a screenshot point into a `click` step. |
 | `scripts/cleanup.sh` | Teardown (above). |
 | `fixtures/basic.sh <dir>` | The default repo. `main` has 3 commits (tag `v0.1.0` on the third); `feature/login` is one commit ahead; `src/main.rs` is modified and `notes.txt` is untracked. Commit dates are fixed. |
+| `fixtures/tracking.sh <dir>` | `basic.sh` plus a local bare `origin`. Before a fetch, `main` is 1 ahead. Another clone has already pushed, so after a fetch `main` reads 1 ahead and 2 behind, and `feature/login` reads 1 behind. Use it for fetch, pull, push, and the ahead/behind counts. |
 
 On Linux there's no capture support in this skill. `scripts/headless-smoke-test.sh` only proves that the app starts under Xvfb.

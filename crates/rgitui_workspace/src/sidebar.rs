@@ -22,8 +22,8 @@ use rgitui_i18n::{key, t};
 use rgitui_settings::{Compactness, SettingsState};
 use rgitui_theme::{ActiveTheme, Color, StyledExt};
 use rgitui_ui::{
-    Badge, Button, ButtonSize, ButtonStyle, CheckState, Checkbox, DiffStat, IconButton, IconName,
-    Label, LabelSize, Scrollbar, TextInput, TextInputEvent, Tooltip,
+    Button, ButtonSize, ButtonStyle, CheckState, Checkbox, DiffStat, IconButton, IconName, Label,
+    LabelSize, Scrollbar, TextInput, TextInputEvent, Tooltip,
 };
 
 use crate::keymap;
@@ -249,8 +249,6 @@ const STASH_MENU_WIDTH: f32 = 180.0;
 const STASH_MENU_ITEM_HEIGHT: f32 = 28.0;
 /// Vertical padding applied to the top and bottom of the stash context menu.
 const STASH_MENU_VERTICAL_PADDING: f32 = 3.0;
-/// Number of action rows in the stash context menu (Apply, Pop, Create branch, Drop).
-const STASH_MENU_ITEM_COUNT: f32 = 4.0;
 
 /// Rows an expanded section keeps when several sections compete for the same
 /// vertical space. A section whose content is shorter than this keeps its
@@ -434,14 +432,20 @@ fn distribute_sidebar_list_heights(available_px: f32, desired_px: &[f32], min_px
     heights
 }
 
-/// Total rendered size of the stash context menu. Derived from the item count and
-/// row height so the outside-click hit-test and the edge-clamping math stay in sync
-/// with the actual menu content.
-fn stash_menu_size() -> Size<Pixels> {
-    Size::new(
-        px(STASH_MENU_WIDTH),
-        px(STASH_MENU_ITEM_COUNT * STASH_MENU_ITEM_HEIGHT + 2.0 * STASH_MENU_VERTICAL_PADDING),
+/// A right-click menu opened at `position`, in window coordinates.
+///
+/// Deferred so it paints after the rest of the window: drawn as a child of the
+/// sidebar, a menu wider than the sidebar ran under the center column, which
+/// paints later, and was cut off at the sidebar's edge. Anchored at the click
+/// and pushed back inside the window near its edges.
+fn context_menu_layer(position: Point<Pixels>, menu: impl IntoElement) -> impl IntoElement {
+    deferred(
+        anchored()
+            .position(position)
+            .snap_to_window_with_margin(px(8.))
+            .child(menu),
     )
+    .with_priority(1)
 }
 
 /// The left sidebar panel with branches, tags, stashes, and working tree status.
@@ -548,6 +552,107 @@ pub struct Sidebar {
 /// Pure filtering function: returns indices into `branches` whose names contain
 /// `filter` (case-insensitive substring) and, if `current_user_email` is `Some`
 /// and `my_branches` is true, also have a matching author email.
+/// Where a branch stands against its upstream, from the commits each has that
+/// the other lacks. `None` when they are level, or when nothing is known yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BranchSync {
+    /// Local commits the upstream lacks: push them.
+    Ahead(usize),
+    /// Upstream commits the branch lacks: pull them.
+    Behind(usize),
+    /// Both: integrate the upstream's commits (merge or rebase), then push.
+    Diverged { ahead: usize, behind: usize },
+}
+
+impl BranchSync {
+    fn of(ahead: usize, behind: usize) -> Option<Self> {
+        match (ahead, behind) {
+            (0, 0) => None,
+            (ahead, 0) => Some(Self::Ahead(ahead)),
+            (0, behind) => Some(Self::Behind(behind)),
+            (ahead, behind) => Some(Self::Diverged { ahead, behind }),
+        }
+    }
+
+    fn ahead(self) -> usize {
+        match self {
+            Self::Ahead(ahead) | Self::Diverged { ahead, .. } => ahead,
+            Self::Behind(_) => 0,
+        }
+    }
+
+    fn behind(self) -> usize {
+        match self {
+            Self::Behind(behind) | Self::Diverged { behind, .. } => behind,
+            Self::Ahead(_) => 0,
+        }
+    }
+
+    /// What the user should do about it, naming the upstream.
+    fn hint(self, upstream: &str) -> SharedString {
+        match self {
+            Self::Ahead(ahead) => t!(
+                "sidebar.branch.sync.ahead",
+                upstream = upstream,
+                ahead = ahead
+            ),
+            Self::Behind(behind) => {
+                t!(
+                    "sidebar.branch.sync.behind",
+                    upstream = upstream,
+                    behind = behind
+                )
+            }
+            Self::Diverged { ahead, behind } => t!(
+                "sidebar.branch.sync.diverged",
+                upstream = upstream,
+                ahead = ahead,
+                behind = behind
+            ),
+        }
+    }
+}
+
+/// The ↑ahead ↓behind marker on a branch row, as other Git clients draw it,
+/// with a tooltip that says whether to push, pull, or integrate first.
+fn render_branch_sync(id: ElementId, sync: BranchSync, upstream: &str) -> gpui::AnyElement {
+    let count = |icon: IconName, n: usize, color: Color| {
+        div()
+            .h_flex()
+            .gap(px(1.))
+            .items_center()
+            .child(
+                rgitui_ui::Icon::new(icon)
+                    .size(rgitui_ui::IconSize::XSmall)
+                    .color(color),
+            )
+            .child(
+                Label::new(SharedString::from(n.to_string()))
+                    .size(LabelSize::XSmall)
+                    .color(color),
+            )
+    };
+    let behind_color = if matches!(sync, BranchSync::Diverged { .. }) {
+        Color::Warning
+    } else {
+        Color::Info
+    };
+    div()
+        .id(id)
+        .h_flex()
+        .gap(px(4.))
+        .flex_shrink_0()
+        .items_center()
+        .tooltip(Tooltip::text(sync.hint(upstream)))
+        .when(sync.ahead() > 0, |el| {
+            el.child(count(IconName::ArrowUp, sync.ahead(), Color::Success))
+        })
+        .when(sync.behind() > 0, |el| {
+            el.child(count(IconName::ArrowDown, sync.behind(), behind_color))
+        })
+        .into_any_element()
+}
+
 #[cfg(test)]
 pub(crate) fn filter_local_branch_indices(
     branches: &[BranchInfo],
@@ -2699,28 +2804,12 @@ impl Render for Sidebar {
                             );
                         }
 
-                        if branch.ahead_count() > 0 || branch.behind_count() > 0 {
-                            item = item.child(
-                                div()
-                                    .h_flex()
-                                    .gap(px(4.))
-                                    .flex_shrink_0()
-                                    .items_center()
-                                    .when(branch.ahead_count() > 0, |el| {
-                                        el.child(
-                                            Badge::new(format!("{}", branch.ahead_count()))
-                                                .color(Color::Success)
-                                                .prefix("+"),
-                                        )
-                                    })
-                                    .when(branch.behind_count() > 0, |el| {
-                                        el.child(
-                                            Badge::new(format!("{}", branch.behind_count()))
-                                                .color(Color::Warning)
-                                                .prefix("-"),
-                                        )
-                                    }),
-                            );
+                        if let Some(sync) = BranchSync::of(branch.ahead_count(), branch.behind_count()) {
+                            item = item.child(render_branch_sync(
+                                ElementId::NamedInteger("branch-sync".into(), i as u64),
+                                sync,
+                                branch.upstream.as_deref().unwrap_or_default(),
+                            ));
                         }
 
                         // 行内保留复制、切换和重命名；合并与删除通过右键菜单操作。
@@ -5106,9 +5195,6 @@ impl Render for Sidebar {
             };
             let mut menu = div()
                 .id("local-branch-context-menu")
-                .absolute()
-                .left(pos.x - self.container_bounds.origin.x)
-                .top(pos.y - self.container_bounds.origin.y)
                 .v_flex()
                 .p(px(3.))
                 .bg(colors.elevated_surface_background)
@@ -5167,7 +5253,7 @@ impl Render for Sidebar {
                 SidebarEvent::BranchCopyName(branch_name),
                 weak,
             ));
-            panel = panel.child(menu);
+            panel = panel.child(context_menu_layer(pos, menu));
         }
 
         if let Some(ref menu_state) = self.stash_context_menu {
@@ -5176,25 +5262,12 @@ impl Render for Sidebar {
             let menu_hover = colors.ghost_element_hover;
             let menu_active = colors.ghost_element_active;
             let pos = menu_state.position;
-            let container_bounds = self.container_bounds;
             let weak = cx.weak_entity();
-
-            // Convert window-relative click position to container-relative coordinates.
-            let menu_size = stash_menu_size();
-            let rel_x = pos.x - container_bounds.origin.x;
-            let rel_y = pos.y - container_bounds.origin.y;
-            let max_x = container_bounds.size.width - menu_size.width;
-            let max_y = container_bounds.size.height - menu_size.height;
-            let clamped_x = rel_x.max(px(0.)).min(max_x);
-            let clamped_y = rel_y.max(px(0.)).min(max_y);
 
             let mut menu = div()
                 .id("stash-context-menu")
-                .absolute()
-                .left(clamped_x)
-                .top(clamped_y)
                 .v_flex()
-                .min_w(menu_size.width)
+                .min_w(px(STASH_MENU_WIDTH))
                 .py(px(STASH_MENU_VERTICAL_PADDING))
                 .bg(menu_bg)
                 .border_1()
@@ -5396,7 +5469,7 @@ impl Render for Sidebar {
                 );
             }
 
-            panel = panel.child(menu);
+            panel = panel.child(context_menu_layer(pos, menu));
         }
 
         if let Some(menu_state) = self.submodule_context_menu.as_ref() {
@@ -5435,9 +5508,6 @@ impl Render for Sidebar {
                 };
                 let mut menu = div()
                     .id("submodule-context-menu")
-                    .absolute()
-                    .left(pos.x - self.container_bounds.origin.x)
-                    .top(pos.y - self.container_bounds.origin.y)
                     .v_flex()
                     .p(px(3.))
                     .bg(colors.elevated_surface_background)
@@ -5466,7 +5536,7 @@ impl Render for Sidebar {
                     SidebarEvent::ChangeSubmoduleUrl { name, path, url },
                     weak,
                 ));
-                panel = panel.child(menu);
+                panel = panel.child(context_menu_layer(pos, menu));
             }
         }
 
@@ -5504,9 +5574,6 @@ impl Render for Sidebar {
                 };
                 let mut menu = div()
                     .id("remote-branch-context-menu")
-                    .absolute()
-                    .left(pos.x - self.container_bounds.origin.x)
-                    .top(pos.y - self.container_bounds.origin.y)
                     .v_flex()
                     .p(px(3.))
                     .bg(colors.elevated_surface_background)
@@ -5547,7 +5614,7 @@ impl Render for Sidebar {
                     SidebarEvent::RemoteBranchCreatePr(branch_name),
                     weak,
                 ));
-                panel = panel.child(menu);
+                panel = panel.child(context_menu_layer(pos, menu));
             }
         }
 
@@ -6495,5 +6562,38 @@ mod popover_view_tests {
         host.simulate_click(point(px(SIDEBAR_WIDTH + 300.), px(300.)), MouseButton::Left);
 
         assert!(host.read(|host, cx| host.sidebar.read(cx).stash_context_menu.is_none()));
+    }
+}
+
+#[cfg(test)]
+mod branch_sync_tests {
+    use super::BranchSync;
+
+    #[test]
+    fn a_branch_level_with_its_upstream_shows_nothing() {
+        assert_eq!(BranchSync::of(0, 0), None);
+    }
+
+    #[test]
+    fn only_local_commits_means_push() {
+        assert_eq!(BranchSync::of(2, 0), Some(BranchSync::Ahead(2)));
+    }
+
+    #[test]
+    fn only_upstream_commits_means_pull() {
+        assert_eq!(BranchSync::of(0, 3), Some(BranchSync::Behind(3)));
+    }
+
+    #[test]
+    fn commits_on_both_sides_have_diverged() {
+        let sync = BranchSync::of(2, 3).unwrap();
+        assert_eq!(
+            sync,
+            BranchSync::Diverged {
+                ahead: 2,
+                behind: 3
+            }
+        );
+        assert_eq!((sync.ahead(), sync.behind()), (2, 3));
     }
 }

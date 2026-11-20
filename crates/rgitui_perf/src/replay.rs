@@ -184,8 +184,12 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
             }
         }
 
-        Step::Click { x, y } => {
+        Step::Click { x, y, button } => {
             let position = Point::new(px(*x), px(*y));
+            let button = match button {
+                crate::driver::ClickButton::Left => MouseButton::Left,
+                crate::driver::ClickButton::Right => MouseButton::Right,
+            };
             cx.update(|window, cx| {
                 // Moving first matters: hover state and hitbox tracking are
                 // established by the move, and a click delivered without one
@@ -200,7 +204,7 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
                 );
                 window.dispatch_event(
                     PlatformInput::MouseDown(MouseDownEvent {
-                        button: MouseButton::Left,
+                        button,
                         position,
                         modifiers: Modifiers::default(),
                         click_count: 1,
@@ -210,7 +214,7 @@ async fn execute(step: &Step, cx: &mut AsyncWindowContext) -> anyhow::Result<()>
                 );
                 window.dispatch_event(
                     PlatformInput::MouseUp(MouseUpEvent {
-                        button: MouseButton::Left,
+                        button,
                         position,
                         modifiers: Modifiers::default(),
                         click_count: 1,
