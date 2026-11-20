@@ -157,8 +157,8 @@ pub enum FlatFileItem {
 #[derive(Debug, Clone)]
 enum SidebarItem {
     SectionHeader(SidebarSection),
-    LocalBranch(usize),  // index into local branches
-    Remote(usize),       // index into remotes
+    LocalBranch(usize), // index into local branches
+    Remote(usize),      // index into remotes
     RemoteBranchGroup(String),
     RemoteBranch(usize), // index into remote branches
     Tag(usize),          // index into tags
@@ -764,7 +764,6 @@ impl Sidebar {
         }
     }
 
-
     /// Returns the branch indices that pass the current branch filter and "My Branches" toggle.
     fn filtered_local_indices(&self, current_user_email: Option<&str>) -> Vec<usize> {
         filter_branch_indices(
@@ -1248,9 +1247,9 @@ impl Sidebar {
         self.rebuild_nav_items();
         // 折叠隐藏子节点后，键盘焦点回到该分组，避免落到另一节的行上。
         if self.keyboard_index.is_some() {
-            self.keyboard_index = self.cached_nav_items.iter().position(|item| {
-                matches!(item, SidebarItem::RemoteBranchGroup(group) if group == &name)
-            });
+            self.keyboard_index = self.cached_nav_items.iter().position(
+                |item| matches!(item, SidebarItem::RemoteBranchGroup(group) if group == &name),
+            );
         }
         cx.notify();
     }
@@ -5079,7 +5078,10 @@ impl Render for Sidebar {
             let branch_name = menu_state.name.clone();
             let pos = menu_state.position;
             let weak = cx.weak_entity();
-            let action = |id: &'static str, label: SharedString, event: SidebarEvent, weak: WeakEntity<Sidebar>| {
+            let action = |id: &'static str,
+                          label: SharedString,
+                          event: SidebarEvent,
+                          weak: WeakEntity<Sidebar>| {
                 div()
                     .id(id)
                     .h_flex()
@@ -5093,9 +5095,14 @@ impl Render for Sidebar {
                         weak.update(cx, |sidebar, cx| {
                             sidebar.dismiss_local_branch_context_menu(cx);
                             cx.emit(event.clone());
-                        }).ok();
+                        })
+                        .ok();
                     })
-                    .child(Label::new(label).size(LabelSize::XSmall).color(Color::Default))
+                    .child(
+                        Label::new(label)
+                            .size(LabelSize::XSmall)
+                            .color(Color::Default),
+                    )
             };
             let mut menu = div()
                 .id("local-branch-context-menu")
@@ -5112,14 +5119,54 @@ impl Render for Sidebar {
                 .on_mouse_down_out(cx.listener(|sidebar, _: &MouseDownEvent, _, cx| {
                     sidebar.dismiss_local_branch_context_menu(cx)
                 }));
-            menu = menu.child(action("local-checkout", t!("sidebar.local_branch.checkout"), SidebarEvent::BranchCheckout(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-worktree", t!("sidebar.local_branch.checkout_worktree"), SidebarEvent::WorktreeCreateForBranch(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-merge", t!("sidebar.local_branch.merge"), SidebarEvent::MergeBranch(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-new-branch", t!("sidebar.local_branch.new_branch"), SidebarEvent::BranchCreateFrom(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-new-tag", t!("sidebar.local_branch.new_tag"), SidebarEvent::TagCreateFrom(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-rename", t!("sidebar.rename_branch.tooltip"), SidebarEvent::BranchRename(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-delete", t!("sidebar.local_branch.delete"), SidebarEvent::BranchDelete(branch_name.clone()), weak.clone()));
-            menu = menu.child(action("local-copy", t!("sidebar.local_branch.copy_name"), SidebarEvent::BranchCopyName(branch_name), weak));
+            menu = menu.child(action(
+                "local-checkout",
+                t!("sidebar.local_branch.checkout"),
+                SidebarEvent::BranchCheckout(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-worktree",
+                t!("sidebar.local_branch.checkout_worktree"),
+                SidebarEvent::WorktreeCreateForBranch(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-merge",
+                t!("sidebar.local_branch.merge"),
+                SidebarEvent::MergeBranch(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-new-branch",
+                t!("sidebar.local_branch.new_branch"),
+                SidebarEvent::BranchCreateFrom(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-new-tag",
+                t!("sidebar.local_branch.new_tag"),
+                SidebarEvent::TagCreateFrom(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-rename",
+                t!("sidebar.rename_branch.tooltip"),
+                SidebarEvent::BranchRename(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-delete",
+                t!("sidebar.local_branch.delete"),
+                SidebarEvent::BranchDelete(branch_name.clone()),
+                weak.clone(),
+            ));
+            menu = menu.child(action(
+                "local-copy",
+                t!("sidebar.local_branch.copy_name"),
+                SidebarEvent::BranchCopyName(branch_name),
+                weak,
+            ));
             panel = panel.child(menu);
         }
 
@@ -5449,7 +5496,11 @@ impl Render for Sidebar {
                             })
                             .ok();
                         })
-                        .child(Label::new(label).size(LabelSize::XSmall).color(Color::Default))
+                        .child(
+                            Label::new(label)
+                                .size(LabelSize::XSmall)
+                                .color(Color::Default),
+                        )
                 };
                 let mut menu = div()
                     .id("remote-branch-context-menu")
@@ -5543,9 +5594,7 @@ mod census {
             match self {
                 SidebarItem::StagedDir(key)
                 | SidebarItem::UnstagedDir(key)
-                | SidebarItem::RemoteBranchGroup(key) => {
-                    key.heap_size(census)
-                }
+                | SidebarItem::RemoteBranchGroup(key) => key.heap_size(census),
                 _ => 0,
             }
         }

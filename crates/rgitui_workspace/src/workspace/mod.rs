@@ -336,7 +336,6 @@ pub(super) struct ActiveOperation {
     pub started_at: Instant,
 }
 
-
 /// A pending "new release available" banner shown above the status bar.
 #[derive(Debug, Clone)]
 pub(super) struct UpdateNotification {

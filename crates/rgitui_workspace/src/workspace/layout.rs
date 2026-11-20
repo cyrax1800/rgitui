@@ -3121,4 +3121,3 @@ mod head_display_name_tests {
 fn fill_container() -> StyleRefinement {
     StyleRefinement::default().size_full()
 }
-

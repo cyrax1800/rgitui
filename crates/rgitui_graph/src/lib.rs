@@ -1934,7 +1934,9 @@ impl GraphView {
     fn filtered_selection_position(&self) -> Option<usize> {
         let selected_oid = self.selected_oid?;
         self.filter_matches.iter().position(|index| {
-            self.commits.get(*index).is_some_and(|commit| commit.oid == selected_oid)
+            self.commits
+                .get(*index)
+                .is_some_and(|commit| commit.oid == selected_oid)
         })
     }
 
@@ -1952,7 +1954,8 @@ impl GraphView {
         };
         self.current_match = position;
         self.select_list_index(list_index, cx);
-        self.search_results_scroll.scroll_to_item(position, strategy);
+        self.search_results_scroll
+            .scroll_to_item(position, strategy);
     }
 
     /// Search next/previous only among visible filtered commits, not hidden
@@ -3467,8 +3470,7 @@ impl Render for GraphView {
                 move |range: Range<usize>, _window: &mut Window, _cx: &mut App| {
                     range
                         .map(|result_index| {
-                            let Some(commit_index) =
-                                matching_indices.get(result_index).copied()
+                            let Some(commit_index) = matching_indices.get(result_index).copied()
                             else {
                                 return div().into_any_element();
                             };
@@ -3514,11 +3516,7 @@ impl Render for GraphView {
                                     div()
                                         .flex_1()
                                         .min_w_0()
-                                        .child(
-                                            Label::new(title)
-                                                .size(LabelSize::Small)
-                                                .truncate(),
-                                        ),
+                                        .child(Label::new(title).size(LabelSize::Small).truncate()),
                                 )
                                 .child(
                                     div()
@@ -3533,11 +3531,7 @@ impl Render for GraphView {
                                                 .truncate(),
                                         ),
                                 )
-                                .child(
-                                    Label::new(sha)
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Muted),
-                                )
+                                .child(Label::new(sha).size(LabelSize::XSmall).color(Color::Muted))
                                 .into_any_element()
                         })
                         .collect()
@@ -5183,9 +5177,7 @@ mod tests {
         let indices = commits
             .iter()
             .enumerate()
-            .filter_map(|(index, commit)| {
-                commit_matches_query(commit, "alice").then_some(index)
-            })
+            .filter_map(|(index, commit)| commit_matches_query(commit, "alice").then_some(index))
             .collect::<Vec<_>>();
         assert_eq!(indices, vec![0, 2]);
     }

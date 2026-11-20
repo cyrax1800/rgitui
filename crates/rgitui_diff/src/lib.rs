@@ -3678,10 +3678,7 @@ impl Render for DiffViewer {
         // binary assets, empty additions, and certain Git metadata changes.
         // Previously their selected path appeared in the header but the body
         // was entirely blank, making a successful file click seem broken.
-        if self.diff.is_some()
-            && self.three_way_diff.is_none()
-            && self.display_rows.is_empty()
-        {
+        if self.diff.is_some() && self.three_way_diff.is_none() && self.display_rows.is_empty() {
             let label = self.file_path.clone().unwrap_or_default();
             log::debug!("diff has no text rows: path={}", label);
             return div()
@@ -3696,11 +3693,7 @@ impl Render for DiffViewer {
                         .px(px(12.))
                         .items_center()
                         .bg(colors.toolbar_background)
-                        .child(
-                            Label::new(label)
-                                .size(LabelSize::XSmall)
-                                .truncate(),
-                        ),
+                        .child(Label::new(label).size(LabelSize::XSmall).truncate()),
                 )
                 .child(
                     div()

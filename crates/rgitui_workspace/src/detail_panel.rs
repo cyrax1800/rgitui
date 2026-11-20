@@ -6,8 +6,7 @@ use gpui::prelude::*;
 use gpui::{
     div, img, px, uniform_list, App, ClickEvent, ClipboardItem, Context, ElementId, Entity,
     EventEmitter, FocusHandle, ListSizingBehavior, MouseButton, MouseDownEvent, ObjectFit, Render,
-    ScrollStrategy, SharedString,
-    UniformListScrollHandle, WeakEntity, Window,
+    ScrollStrategy, SharedString, UniformListScrollHandle, WeakEntity, Window,
 };
 use rgitui_diff::DiffSource;
 use rgitui_git::{
@@ -1356,11 +1355,7 @@ impl DetailPanel {
     }
     /// Shared files-only content for both the detailed metadata layout and
     /// the compact file list beside the commit Diff.
-    fn render_changed_files<E: ParentElement>(
-        &self,
-        mut content: E,
-        cx: &mut Context<Self>,
-    ) -> E {
+    fn render_changed_files<E: ParentElement>(&self, mut content: E, cx: &mut Context<Self>) -> E {
         let colors = cx.colors().clone();
         // -- Changed Files Section --
         if let (Some(diff), Some(cached)) = (&self.commit_diff, &self.cached_file_tree) {
@@ -1530,31 +1525,22 @@ impl DetailPanel {
 
         content
     }
-
-
 }
 
 impl Render for DetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = cx.colors().clone();
         if self.files_only {
-            let mut content = div()
-                .v_flex()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden();
+            let mut content = div().v_flex().flex_1().min_h_0().overflow_hidden();
             if self.commit_diff.is_some() {
                 content = self.render_changed_files(content, cx);
             } else {
                 content = content.child(
-                    div()
-                        .px_3()
-                        .py_4()
-                        .child(
-                            Label::new(t!("detail.empty.description"))
-                                .size(LabelSize::XSmall)
-                                .color(Color::Muted),
-                        ),
+                    div().px_3().py_4().child(
+                        Label::new(t!("detail.empty.description"))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    ),
                 );
             }
             return div()
@@ -2181,8 +2167,7 @@ mod census {
     /// are not, and a file path is exactly the length that stops being inline.
     impl HeapSize for CachedFlatRow {
         fn heap_size(&self, census: &mut Census) -> usize {
-            self.file_name.heap_size(census)
-                + self.change_code.heap_size(census)
+            self.file_name.heap_size(census) + self.change_code.heap_size(census)
         }
     }
 
@@ -2712,7 +2697,12 @@ mod tests {
             Some(1)
         );
         assert_eq!(
-            DetailPanel::resolve_file_click_index(&files, false, 0, std::path::Path::new("deleted.cs")),
+            DetailPanel::resolve_file_click_index(
+                &files,
+                false,
+                0,
+                std::path::Path::new("deleted.cs")
+            ),
             None
         );
     }

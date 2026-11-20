@@ -255,9 +255,7 @@ impl CommitPanel {
     /// Whether a commit can be made right now: a summary has been typed and
     /// something is staged.
     pub fn can_commit(&self, cx: &Context<Self>) -> bool {
-        !self.committing
-            && !self.summary_editor.read(cx).is_empty()
-            && self.staged_count > 0
+        !self.committing && !self.summary_editor.read(cx).is_empty() && self.staged_count > 0
     }
 
     /// Emit a commit request and reset the panel.

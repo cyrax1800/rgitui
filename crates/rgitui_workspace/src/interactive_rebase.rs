@@ -192,12 +192,7 @@ impl InteractiveRebase {
         cx: &mut Context<Self>,
     ) {
         self.show_visible(entries, target_ref, cx);
-        self.set_action_on(
-            reword_index,
-            RebaseAction::Reword(String::new()),
-            None,
-            cx,
-        );
+        self.set_action_on(reword_index, RebaseAction::Reword(String::new()), None, cx);
     }
 
     pub fn is_visible(&self) -> bool {

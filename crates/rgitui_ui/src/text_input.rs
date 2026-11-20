@@ -2,8 +2,8 @@ use gpui::prelude::*;
 use gpui::{
     canvas, div, fill, px, rems, size, App, Bounds, Context, ElementInputHandler,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, HighlightStyle, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, SharedString,
-    Size, StyledText, TextLayout, UTF16Selection, UnderlineStyle, Window,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, SharedString, Size,
+    StyledText, TextLayout, UTF16Selection, UnderlineStyle, Window,
 };
 use rgitui_theme::{ActiveTheme, Color};
 use std::ops::Range;
@@ -212,10 +212,7 @@ impl TextInput {
                 &self.text,
                 start_utf16 + selected.start.min(insert_utf16_len),
             );
-            let end = utf16_to_utf8(
-                &self.text,
-                start_utf16 + selected.end.min(insert_utf16_len),
-            );
+            let end = utf16_to_utf8(&self.text, start_utf16 + selected.end.min(insert_utf16_len));
             self.cursor = end;
             self.selection = (start != end).then_some(start);
         } else {
@@ -577,9 +574,11 @@ impl TextInput {
         // Password/token inputs deliberately keep the former keydown path so
         // that their contents aren't exposed via OS composition services.
         if self.masked && !self.read_only && !primary {
-            let text = event.keystroke.key_char.as_deref().or_else(|| {
-                (key.len() == 1 && key.is_ascii()).then_some(key)
-            });
+            let text = event
+                .keystroke
+                .key_char
+                .as_deref()
+                .or_else(|| (key.len() == 1 && key.is_ascii()).then_some(key));
             if let Some(text) = text {
                 self.delete_selection();
                 self.text.insert_str(self.cursor, text);
@@ -603,9 +602,8 @@ impl EntityInputHandler for TextInput {
             return None;
         }
         let range = utf16_range_to_utf8(&self.text, range_utf16);
-        *actual_range = Some(
-            utf8_to_utf16(&self.text, range.start)..utf8_to_utf16(&self.text, range.end),
-        );
+        *actual_range =
+            Some(utf8_to_utf16(&self.text, range.start)..utf8_to_utf16(&self.text, range.end));
         Some(self.text[range].to_string())
     }
 
@@ -617,8 +615,7 @@ impl EntityInputHandler for TextInput {
     ) -> Option<UTF16Selection> {
         let range = self.selection_range().unwrap_or(self.cursor..self.cursor);
         Some(UTF16Selection {
-            range: utf8_to_utf16(&self.text, range.start)
-                ..utf8_to_utf16(&self.text, range.end),
+            range: utf8_to_utf16(&self.text, range.start)..utf8_to_utf16(&self.text, range.end),
             reversed: self.selection.is_some_and(|anchor| self.cursor < anchor),
         })
     }
@@ -676,13 +673,7 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.replace_native_text(
-            range_utf16,
-            new_text,
-            new_selected_range_utf16,
-            true,
-            cx,
-        );
+        self.replace_native_text(range_utf16, new_text, new_selected_range_utf16, true, cx);
     }
 
     fn bounds_for_range(

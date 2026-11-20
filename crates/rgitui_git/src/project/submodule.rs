@@ -238,7 +238,11 @@ pub fn submodule_update(repo: &Repository, name: &str, init: bool) -> Result<()>
 
     let path = submodules
         .iter()
-        .find(|submodule| submodule.name().is_ok_and(|submodule_name| submodule_name == name))
+        .find(|submodule| {
+            submodule
+                .name()
+                .is_ok_and(|submodule_name| submodule_name == name)
+        })
         .map(|submodule| submodule.path().to_path_buf())
         .ok_or_else(|| anyhow::anyhow!("Submodule '{}' not found", name))?;
     let workdir = repo

@@ -80,8 +80,7 @@ impl Workspace {
             &changes_panel,
             move |this, _, event: &crate::ChangesPanelEvent, cx| {
                 let crate::ChangesPanelEvent::SelectionChanged(count) = event;
-                selection_commit_panel
-                    .update(cx, |panel, cx| panel.set_staged_count(*count, cx));
+                selection_commit_panel.update(cx, |panel, cx| panel.set_staged_count(*count, cx));
                 this.update_command_context(cx);
             },
         )
@@ -195,11 +194,7 @@ impl Workspace {
 
             changes_panel.update(cx, |panel, cx| {
                 panel.set_worktree(selected_worktree_path, cx);
-                panel.update_status(
-                    init_status.staged.clone(),
-                    init_status.unstaged.clone(),
-                    cx,
-                );
+                panel.update_status(init_status.staged.clone(), init_status.unstaged.clone(), cx);
             });
             let selected_count = changes_panel.read(cx).selected_commit_count();
             commit_panel.update(cx, |cp, cx| cp.set_staged_count(selected_count, cx));

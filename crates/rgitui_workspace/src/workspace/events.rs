@@ -162,8 +162,7 @@ pub(super) fn subscribe_remote_dialog(cx: &mut Context<Workspace>, dialog: &Enti
 }
 
 use super::{
-    ActiveOperation, AiGenerationTarget, BottomPanelMode, UndoAction, ViewCaches,
-    Workspace,
+    ActiveOperation, AiGenerationTarget, BottomPanelMode, UndoAction, ViewCaches, Workspace,
 };
 
 pub(super) fn build_worktree_graph_infos(
@@ -1739,17 +1738,18 @@ pub(super) fn subscribe_sidebar(
                 };
                 match this.open_repo(path.clone(), cx) {
                     Ok(()) => this.show_toast(
-                        t!("workspace.submodule.opened", path = path.display().to_string()),
+                        t!(
+                            "workspace.submodule.opened",
+                            path = path.display().to_string()
+                        ),
                         ToastKind::Success,
                         cx,
                     ),
-                    Err(error) => {
-                        this.show_toast(
-                            t!("workspace.submodule.open_failed", error = error.to_string()),
-                            ToastKind::Error,
-                            cx,
-                        )
-                    }
+                    Err(error) => this.show_toast(
+                        t!("workspace.submodule.open_failed", error = error.to_string()),
+                        ToastKind::Error,
+                        cx,
+                    ),
                 }
             }
             SidebarEvent::RemoveSubmodule(path) => {

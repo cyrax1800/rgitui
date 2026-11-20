@@ -1761,12 +1761,8 @@ impl Render for ChangesPanel {
                                 .map(|path| path.to_string_lossy().to_string())
                                 .collect::<Vec<_>>();
                             let label = if paths.len() > 1 {
-                                format!(
-                                    "{} ({} files)",
-                                    t!("changes.menu.discard"),
-                                    paths.len()
-                                )
-                                .into()
+                                format!("{} ({} files)", t!("changes.menu.discard"), paths.len())
+                                    .into()
                             } else {
                                 t!("changes.menu.discard")
                             };

@@ -116,15 +116,12 @@ impl RenderOnce for Tab {
         }
 
         tab = tab.child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    Label::new(self.label)
-                        .size(LabelSize::Small)
-                        .color(label_color)
-                        .truncate(),
-                ),
+            div().flex_1().min_w_0().child(
+                Label::new(self.label)
+                    .size(LabelSize::Small)
+                    .color(label_color)
+                    .truncate(),
+            ),
         );
 
         // Close button is only exposed while the pointer is over this tab.
