@@ -432,6 +432,10 @@ impl Workspace {
             CommandId::OpenKeymap => {
                 self.open_keymap_file(cx);
             }
+            CommandId::Quit => {
+                self.save_workspace_state(cx);
+                cx.quit();
+            }
             CommandId::WorkspaceHome => {
                 self.go_home(cx);
             }
@@ -961,6 +965,7 @@ impl Workspace {
             | CommandId::OpenRepo
             | CommandId::Shortcuts
             | CommandId::OpenKeymap
+            | CommandId::Quit
             | CommandId::WorkspaceHome
             | CommandId::RestoreLastWorkspace
             | CommandId::Undo

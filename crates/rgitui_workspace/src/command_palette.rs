@@ -566,6 +566,12 @@ pub(crate) fn palette_commands() -> Vec<PaletteCommand> {
             "Preferences",
         ),
         PaletteCommand::new(
+            CommandId::Quit,
+            "Application: Quit",
+            Some("Quit rgitui"),
+            "Application",
+        ),
+        PaletteCommand::new(
             CommandId::Blame,
             "View: Blame File",
             Some("Show what revision and author last modified each line"),

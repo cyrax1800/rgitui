@@ -312,6 +312,9 @@ fn main() {
         // watches that file so saving it reloads the keymap. Must come after
         // settings init, which creates the config directory.
         rgitui_workspace::keymap::init(cx);
+        // Reached when no window handles Quit first, e.g. from the settings
+        // window. The workspace handles it itself to save its state first.
+        cx.on_action(|_: &rgitui_workspace::keymap::actions::Quit, cx| cx.quit());
 
         // Initialize empty avatar cache immediately, load disk data in background
         cx.set_global(rgitui_ui::AvatarCache::new());

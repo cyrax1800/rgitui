@@ -223,6 +223,10 @@ commands! {
         GrowDiffViewer "secondary-down" [hidden];
         /// Open keymap.json in your editor to rebind shortcuts.
         OpenKeymap unbound;
+        // Bound in the settings window too; it handles no workspace command,
+        // so the app-level handler installed by `rgitui` quits from there.
+        /// Quit rgitui.
+        Quit "secondary-q" in "Workspace || SettingsWindow";
     }
 
     // Bound once and handled by whichever element owns the selection or the
@@ -740,6 +744,7 @@ mod tests {
         (CommandId::AiMessage, "ai_message"),
         (CommandId::Refresh, "refresh"),
         (CommandId::Settings, "settings"),
+        (CommandId::Quit, "quit"),
         (CommandId::OpenRepo, "open_repo"),
         (CommandId::WorkspaceHome, "workspace_home"),
         (CommandId::RestoreLastWorkspace, "restore_last_workspace"),
